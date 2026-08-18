@@ -1,0 +1,190 @@
+generator client {
+    provider     = "prisma-client"
+    output       = "../src/generated/prisma"
+    moduleFormat = "cjs"
+}
+
+// Migrate/CLI reads from prisma.config.ts; runtime uses adapter in src/lib/prisma.ts
+datasource db {
+    provider = "postgresql"
+}
+
+enum GoalStatus {
+    ACTIVE
+    COMPLETED
+    PAUSED
+    CANCELLED
+}
+
+enum GoalPeriod {
+    ONCE
+    DAILY
+    WEEKLY
+    MONTHLY
+    YEARLY
+}
+
+enum HabitFrequency {
+    DAILY
+    WEEKLY
+    MONTHLY
+}
+
+enum HabitStatus {
+    ACTIVE
+    PAUSED
+    ARCHIVED
+}
+
+enum EventSource {
+    CORE
+    SOTREINA
+}
+
+enum MetricSource {
+    CORE 
+    SOTREINA
+}
+
+model User {
+    id          String      @id @default(uuid()) @db.Uuid
+    name        String
+    email       String
+    timezone    String
+    locale      String
+
+    createdAt   DateTime    @default(now()) @db.Timestamptz(0)
+    updatedAt   DateTime    @updatedAt @db.Timestamptz(0)
+
+    areas       Area[]
+    goals       Goal[]
+    habits      Habit[]
+    events      Event[]
+    metrics     Metric[]
+    notes       Note[]
+
+    @@unique([email], map: "user_email_unique")
+    @@map("USER")
+}
+
+model Area {
+    id              String      @id @default(uuid()) @db.Uuid
+    userId          String      @db.Uuid
+    name            String
+    description     String?
+    color           String?
+    icon            String?
+
+    createdAt       DateTime    @default(now()) @db.Timestamptz(0)
+    updatedAt       DateTime    @updatedAt @db.Timestamptz(0)
+
+    user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+    goals   GoalArea[]
+
+    @@unique([userId, name], map: "area_name_unique")
+    @@map("AREA")
+}
+
+model Goal {
+    id              String      @id @default(uuid()) @db.Uuid
+    userId          String      @db.Uuid
+    title           String
+    description     String?
+    status          GoalStatus
+
+    startDate       DateTime?   @db.Timestamptz(0)
+    targetDate      DateTime?   @db.Timestamptz(0)
+
+    targetValue     Float?
+    unit            String?
+    period          GoalPeriod?
+
+    createdAt       DateTime    @default(now()) @db.Timestamptz(0)
+    updatedAt       DateTime    @updatedAt @db.Timestamptz(0)
+
+    user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+    areas    GoalArea[]
+
+    @@map("GOAL")
+}
+
+model GoalArea {
+    goalId  String  @db.Uuid
+    areaId  String  @db.Uuid
+
+    goal    Goal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+    area    Area    @relation(fields: [areaId], references: [id], onDelete: Cascade)
+
+    @@id([goalId, areaId])
+    @@map("GOAL_AREA")
+}
+
+model Habit {
+    id                  String          @id @default(uuid()) @db.Uuid
+    userId              String          @db.Uuid
+    name                String
+    description         String?
+    frequency           HabitFrequency
+
+    frequencyTarget     Int
+    targetValue         Float?
+    targetUnit          String?
+
+    startDate           DateTime        @db.Date
+    endDate             DateTime?       @db.Date
+    
+    status              HabitStatus
+    
+    createdAt           DateTime        @default(now()) @db.Timestamptz(0)
+    updatedAt           DateTime        @updatedAt @db.Timestamptz(0)
+
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@map("HABIT")
+}
+
+model Event {
+    id          String      @id @default(uuid()) @db.Uuid
+    userId      String      @db.Uuid
+    type        String
+    source      EventSource
+
+    occurredAt  DateTime    @db.Timestamptz(0)
+    createdAt   DateTime    @default(now()) @db.Timestamptz(0)
+
+    metadata    Json        @db.JsonB
+
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@index([userId, occurredAt], map: "event_userId_occurredAt")
+    @@map("EVENT")
+}
+
+model Metric {
+    id          String      @id @default(uuid()) @db.Uuid
+    userId      String      @db.Uuid
+    key         String
+    value       Float
+    unit        String?
+
+    recordedAt  DateTime    @db.Timestamptz(0)
+    createdAt   DateTime    @default(now()) @db.Timestamptz(0)
+
+    source      MetricSource
+    metadata    Json        @db.JsonB
+    
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@index([userId, key, recordedAt], map: "metric_userId_key_recordedAt")
+    @@map("METRIC")
+}
+
+model Note {
+    id          String      @id @default(uuid()) @db.Uuid
+    userId      String      @db.Uuid
+    title       String?
+    content     String
+
+    createdAt   DateTime    @default(now()) @db.Timestamptz(0)
+    updatedAt   DateTime    @updatedAt @db.Timestamptz(0)
+
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@map("NOTE")
+}

@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "types": ["node", "jest"],
+
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    // DTOs com class-validator declaram propriedades sem inicializador
+    "strictPropertyInitialization": false,
+
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    "declaration": false,
+    "sourceMap": true,
+    "incremental": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "prisma/**/*.ts",
+    "prisma.config.ts",
+    "commitlint.config.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

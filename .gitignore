@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Prisma Client generated
+src/generated/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# editors / SO
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+life-os-foundation.md
+life-os-model.sql

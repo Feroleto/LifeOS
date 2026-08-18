@@ -1,0 +1,5 @@
+set -e
+
+# tsc covers prisma/ and test/, which `nest build` excludes.
+npx tsc --noEmit
+npm test

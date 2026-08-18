@@ -11,8 +11,15 @@ habits, events, metrics and notes, and turns them into analytics.
 introducing any new entity — it defines what belongs in the Core vs. in a future module,
 and section 17 lists architectural rules the schema is meant to obey.
 
-Current state: backend V1 with `users`, `areas` and `goals`. `habits`, `events`,
-`metrics` and `notes` exist in the database but have no HTTP modules yet.
+Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
+`goals`, `habits`, `events`, `metrics` and `notes`.
+
+`events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
+`updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
+Treat a missing `updatedAt` as the model's way of saying a record is not edited, and do
+not add one without the user deciding to change that contract.
+
+Neither `/events` nor `/metrics` is paginated yet, which is the main known gap.
 
 ## Commands
 
@@ -41,9 +48,14 @@ run it themselves rather than trying to bypass the guard.
 
 ## Commits
 
-Conventional Commits, enforced by a Husky `commit-msg` hook running Commitlint — a
-non-compliant message is rejected, so `git commit` fails instead of producing a bad
-commit. `commitlint.config.ts` is the contract; the README documents it for humans.
+Two Husky hooks run on `git commit`. `pre-commit` runs `npx tsc --noEmit` then `npm test`
+(`set -e` makes it stop at the first failure — without it the hook would exit with the
+status of the last command and let a type error through). `commit-msg` runs Commitlint,
+so a non-compliant message fails the commit instead of producing a bad one.
+`commitlint.config.ts` is the contract; the README documents it for humans.
+
+The hooks check the working tree, not the staged snapshot. Never pass `--no-verify` on
+the user's behalf — if a hook fails, fix the cause or report it.
 
 `<type>(<scope>): <subject>`, scope optional and kebab-case, named after the module
 (`goals`, `areas`, `users`, `prisma`, `config`). Subject must not start with a capital

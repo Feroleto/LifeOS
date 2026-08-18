@@ -49,6 +49,44 @@ Global prefix: `/api`.
 | GET    | `/goals/:id`   | returns `areas` already flattened           |
 | PATCH  | `/goals/:id`   | `areaIds` replaces the whole set of areas   |
 | DELETE | `/goals/:id`   | 204                                         |
+| POST   | `/habits`      | `status` defaults to `ACTIVE`               |
+| GET    | `/habits`      | filters `?status=` and `?frequency=`        |
+| GET    | `/habits/:id`  |                                             |
+| PATCH  | `/habits/:id`  |                                             |
+| DELETE | `/habits/:id`  | 204                                         |
+| POST   | `/events`      | `source` defaults to `CORE`, `metadata` to `{}` |
+| GET    | `/events`      | filters `?type=`, `?source=`, `?from=`, `?to=`  |
+| GET    | `/events/:id`  |                                             |
+| DELETE | `/events/:id`  | 204                                         |
+| POST   | `/metrics`     | `source` defaults to `CORE`, `metadata` to `{}` |
+| GET    | `/metrics`     | filters `?key=`, `?source=`, `?from=`, `?to=`   |
+| GET    | `/metrics/:id` |                                             |
+| DELETE | `/metrics/:id` | 204                                         |
+| POST   | `/notes`       |                                             |
+| GET    | `/notes`       | `?q=` searches title and content, case-insensitive |
+| GET    | `/notes/:id`   |                                             |
+| PATCH  | `/notes/:id`   |                                             |
+| DELETE | `/notes/:id`   | 204                                         |
+
+### Append-only records
+
+**Events and metrics have no `PATCH`.** The schema gives them a `createdAt` but no
+`updatedAt`, which is the model saying an occurrence or a measurement is not edited
+after the fact. A wrong record is deleted and recorded again, so history is never
+silently rewritten. Habits and notes do have `updatedAt` and take the usual `PATCH`.
+
+`from` and `to` are inclusive and apply to `occurredAt` for events and to `recordedAt`
+for metrics — the columns their indexes are built on. Both are the moment the thing
+happened, as opposed to `createdAt`, which is when it reached the database. A range
+whose `to` precedes its `from` is a 400.
+
+### Naming conventions the API enforces
+
+- Event `type` must be `SCREAMING_SNAKE_CASE` (`TRAINING_COMPLETED`).
+- Metric `key` must be `snake_case` (`sleep_hours`).
+
+Both are the grouping dimension for analytics, so a stray `sleepHours` would quietly
+become a second, separate series. The rules live in the DTOs, not in the database.
 
 ### User identification (temporary)
 
@@ -98,9 +136,22 @@ Scoping rules already covered by tests:
 
 ## Commits
 
+Two Husky hooks guard every commit:
+
+| Hook         | What it runs                        | Why it fails                         |
+| ------------ | ----------------------------------- | ------------------------------------ |
+| `pre-commit` | `npx tsc --noEmit` then `npm test`  | A type error or a failing unit test  |
+| `commit-msg` | `commitlint --edit`                 | A message that is not conventional   |
+
+`pre-commit` takes a few seconds — the unit tests need no database. It stops at the
+first failure, so a type error never reaches the test run. Use `git commit --no-verify`
+to skip both hooks when you knowingly need to (a WIP commit on a branch, for instance).
+
+Note that the hooks check the **working tree**, not the staged snapshot: with a partial
+`git add -p`, what runs includes changes you did not stage.
+
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
-A Husky `commit-msg` hook runs Commitlint on every commit, so a message that does not
-comply is rejected before the commit is created.
+A message that does not comply is rejected before the commit is created.
 
 ```
 <type>(<scope>): <subject>
@@ -155,6 +206,7 @@ echo "feat(goals): add status filter" | npx commitlint
 ## Structure
 
 ```
+.husky/pre-commit          # typecheck + unit tests
 .husky/commit-msg          # runs Commitlint on every commit message
 commitlint.config.ts       # Conventional Commits rules
 prisma/
@@ -170,11 +222,16 @@ src/
 ├── modules/
 │   ├── users/             # controller + service + DTOs
 │   ├── areas/
-│   └── goals/             # includes the N:N with areas
+│   ├── goals/             # includes the N:N with areas
+│   ├── habits/
+│   ├── events/            # append-only: no update
+│   ├── metrics/           # append-only: no update
+│   └── notes/
 ├── shared/
 │   ├── prisma/            # global PrismaModule + PrismaService
 │   ├── auth/              # CurrentUserGuard, @CurrentUser, @Public
 │   ├── filters/           # Prisma errors -> HTTP (P2002 -> 409, etc.)
+│   ├── query/             # date range filter shared by events and metrics
 │   └── health/
 ├── generated/prisma/      # generated Prisma Client (not versioned)
 └── lib/prisma.ts          # standalone client for scripts (seed)
@@ -232,8 +289,8 @@ Implications:
 
 ## Next steps
 
-1. Remaining Core modules: habits, events, metrics, notes — following the `goals` pattern
-   (service scoped by `userId`, DTOs, tests).
+1. Pagination on `/events` and `/metrics`. They are append-only and grow without bound,
+   so today a list request returns the user's whole history.
 2. Timeline (events + notes) and goal progress calculation.
 3. Real authentication, replacing `CurrentUserGuard`.
 4. React frontend + dashboard.

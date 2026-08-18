@@ -4,7 +4,11 @@ import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 
 import { validateEnv } from "./config/env";
 import { AreasModule } from "./modules/areas/areas.module";
+import { EventsModule } from "./modules/events/events.module";
 import { GoalsModule } from "./modules/goals/goals.module";
+import { HabitsModule } from "./modules/habits/habits.module";
+import { MetricsModule } from "./modules/metrics/metrics.module";
+import { NotesModule } from "./modules/notes/notes.module";
 import { UsersModule } from "./modules/users/users.module";
 import { CurrentUserGuard } from "./shared/auth/current-user.guard";
 import { PrismaExceptionFilter } from "./shared/filters/prisma-exception.filter";
@@ -23,6 +27,10 @@ import { PrismaModule } from "./shared/prisma/prisma.module";
     UsersModule,
     AreasModule,
     GoalsModule,
+    HabitsModule,
+    EventsModule,
+    MetricsModule,
+    NotesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: CurrentUserGuard },

@@ -9,6 +9,7 @@ import { GoalsModule } from "./modules/goals/goals.module";
 import { HabitsModule } from "./modules/habits/habits.module";
 import { MetricsModule } from "./modules/metrics/metrics.module";
 import { NotesModule } from "./modules/notes/notes.module";
+import { TimelineModule } from "./modules/timeline/timeline.module";
 import { UsersModule } from "./modules/users/users.module";
 import { CurrentUserGuard } from "./shared/auth/current-user.guard";
 import { PrismaExceptionFilter } from "./shared/filters/prisma-exception.filter";
@@ -31,6 +32,7 @@ import { PrismaModule } from "./shared/prisma/prisma.module";
     EventsModule,
     MetricsModule,
     NotesModule,
+    TimelineModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: CurrentUserGuard },

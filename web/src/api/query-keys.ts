@@ -8,5 +8,12 @@ export const queryKeys = {
     all: ["goals"] as const,
     list: (filters: { status?: string; areaId?: string }) => ["goals", "list", filters] as const,
     detail: (id: string) => ["goals", "detail", id] as const,
+    /** Derived, not part of the goal: GET /goals/:id/progress is its own read. */
+    progress: (id: string) => ["goals", "progress", id] as const,
+  },
+  habits: {
+    all: ["habits"] as const,
+    list: (status?: string) => ["habits", "list", status ?? null] as const,
+    summary: (id: string) => ["habits", "summary", id] as const,
   },
 } as const;

@@ -4,11 +4,13 @@ import { Link } from "react-router";
 import { EmptyState, ErrorState, LoadingState } from "@/components/layout/states";
 import { Button } from "@/components/ui/button";
 import { useAreas } from "@/features/areas/areas.queries";
-import { useGoals } from "@/features/goals/goals.queries";
+import { useGoalProgress, useGoals } from "@/features/goals/goals.queries";
+import { useHabitSummaries, useHabits } from "@/features/habits/habits.queries";
 import { useMe } from "@/identity/user.queries";
 import { greeting } from "@/lib/greeting";
 import { AreaBentoCard } from "./AreaBentoCard";
-import { groupGoalsByArea } from "./dashboard.selectors";
+import { HabitsBentoCard } from "./HabitsBentoCard";
+import { groupGoalsByArea, progressGoalIds, summarizeHabits } from "./dashboard.selectors";
 
 /** Below this many cards the grid reads fine without the wide first tile. */
 const FEATURED_FROM = 4;
@@ -25,6 +27,16 @@ export function DashboardPage() {
   const firstName = me.data?.name.split(" ")[0];
   // Safe before the queries settle: the grid below only renders once they have.
   const summaries = groupGoalsByArea(areas.data ?? [], goals.data ?? []);
+
+  // Derived reads, one request each, so both lists are narrowed first. Neither
+  // gates the page: a card that cannot show a percentage falls back to the goal
+  // counts, and habits are a tile of their own.
+  const progress = useGoalProgress(progressGoalIds(summaries));
+
+  const habits = useHabits("ACTIVE");
+  const habitSummaries = useHabitSummaries((habits.data ?? []).map((habit) => habit.id));
+  const habitsOverview = summarizeHabits(habits.data ?? [], habitSummaries.byHabitId);
+  const showHabits = habitsOverview.total > 0;
 
   return (
     <section className="flex flex-col gap-8">
@@ -58,7 +70,7 @@ export function DashboardPage() {
             void goals.refetch();
           }}
         />
-      ) : summaries.length === 0 ? (
+      ) : summaries.length === 0 && !showHabits ? (
         <EmptyState
           title="No areas yet"
           description="Areas are the parts of life this dashboard is built from."
@@ -78,9 +90,15 @@ export function DashboardPage() {
                 index === 0 && summaries.length >= FEATURED_FROM ? "xl:col-span-2" : undefined
               }
             >
-              <AreaBentoCard summary={summary} locale={locale} />
+              <AreaBentoCard
+                summary={summary}
+                locale={locale}
+                progress={summary.nextGoal ? progress.get(summary.nextGoal.id) : undefined}
+              />
             </div>
           ))}
+
+          {showHabits ? <HabitsBentoCard overview={habitsOverview} /> : null}
         </div>
       )}
     </section>

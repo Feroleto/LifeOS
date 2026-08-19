@@ -21,6 +21,9 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  // Tests that spy on outgoing requests subscribe here, so the listener must go
+  // with the test rather than leak into the next one.
+  server.events.removeAllListeners();
   window.localStorage.clear();
 });
 

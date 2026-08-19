@@ -1,7 +1,8 @@
 import { HttpResponse, http as msw } from "msw";
 
 import type { Area } from "@/features/areas/area.types";
-import type { Goal } from "@/features/goals/goal.types";
+import type { Goal, GoalProgress } from "@/features/goals/goal.types";
+import type { Habit, HabitSummary } from "@/features/habits/habit.types";
 import type { User } from "@/identity/user.types";
 
 export const USER_ID = "29967d6a-f3c1-4d8d-9b52-f1c79a3bd228";
@@ -38,6 +39,8 @@ export function makeGoal(overrides: Partial<Goal> & Pick<Goal, "id" | "title">):
     startDate: null,
     targetDate: null,
     targetValue: null,
+    currentValue: null,
+    metricKey: null,
     unit: null,
     period: null,
     createdAt: NOW,
@@ -54,3 +57,58 @@ export const areasHandler = (areas: Area[]) =>
 
 export const goalsHandler = (goals: Goal[]) =>
   msw.get("/api/goals", () => HttpResponse.json(goals));
+
+export function makeHabit(overrides: Partial<Habit> & Pick<Habit, "id" | "name">): Habit {
+  return {
+    userId: USER_ID,
+    description: null,
+    frequency: "DAILY",
+    frequencyTarget: 1,
+    targetValue: null,
+    targetUnit: null,
+    startDate: "2026-01-01",
+    endDate: null,
+    status: "ACTIVE",
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+export function makeHabitSummary(
+  overrides: Partial<HabitSummary> & Pick<HabitSummary, "habitId">,
+): HabitSummary {
+  return {
+    frequency: "DAILY",
+    frequencyTarget: 1,
+    period: "2026-08-19",
+    completionsInPeriod: 0,
+    isFulfilled: false,
+    currentStreak: 0,
+    countedSince: NOW,
+    ...overrides,
+  };
+}
+
+export const habitsHandler = (habits: Habit[]) =>
+  msw.get("/api/habits", () => HttpResponse.json(habits));
+
+/** Serves GET /habits/:id/summary, 404-ing an id the test did not prepare. */
+export const habitSummaryHandler = (summaries: HabitSummary[]) =>
+  msw.get("/api/habits/:id/summary", ({ params }) => {
+    const summary = summaries.find((candidate) => candidate.habitId === params.id);
+
+    return summary
+      ? HttpResponse.json(summary)
+      : HttpResponse.json({ message: "Habit not found" }, { status: 404 });
+  });
+
+/** Serves GET /goals/:id/progress, 404-ing an id the test did not prepare. */
+export const goalProgressHandler = (entries: GoalProgress[]) =>
+  msw.get("/api/goals/:id/progress", ({ params }) => {
+    const progress = entries.find((candidate) => candidate.goalId === params.id);
+
+    return progress
+      ? HttpResponse.json(progress)
+      : HttpResponse.json({ message: "Goal not found" }, { status: 404 });
+  });

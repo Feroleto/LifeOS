@@ -3,6 +3,7 @@ import { Target } from "lucide-react";
 import { Link } from "react-router";
 
 import { AreaIcon } from "@/features/areas/area-icon";
+import type { GoalProgress } from "@/features/goals/goal.types";
 import { formatDate } from "@/lib/date";
 import type { AreaSummary } from "./dashboard.selectors";
 
@@ -46,6 +47,27 @@ function headline({ total, active }: AreaSummary): string {
   return `${active} goal${active === 1 ? "" : "s"} in progress`;
 }
 
+/**
+ * The API does not cap a percentage — beating a target reports over 100 — so the
+ * label shows the real number while the fill stops at the end of the track.
+ */
+function GoalProgressBar({ goal, percentage }: { goal: string; percentage: number }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground truncate">{goal}</span>
+        <span className="shrink-0 font-bold text-[var(--area)]">{percentage}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-sm bg-[var(--area-tint)]">
+        <div
+          className="h-full rounded-sm bg-[var(--area)]"
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ProgressBar({ total, completed }: { total: number; completed: number }) {
   if (total > SEGMENT_LIMIT) {
     return (
@@ -74,7 +96,16 @@ function ProgressBar({ total, completed }: { total: number; completed: number })
   );
 }
 
-export function AreaBentoCard({ summary, locale }: { summary: AreaSummary; locale: string }) {
+export function AreaBentoCard({
+  summary,
+  locale,
+  progress,
+}: {
+  summary: AreaSummary;
+  locale: string;
+  /** GET /goals/:id/progress for `nextGoal`, when it was worth asking for. */
+  progress?: GoalProgress | undefined;
+}) {
   const { area, name, total, active, completed, nextGoal } = summary;
 
   return (
@@ -98,7 +129,13 @@ export function AreaBentoCard({ summary, locale }: { summary: AreaSummary; local
         <p className="font-heading text-[28px] leading-tight">{headline(summary)}</p>
       </div>
 
-      {total > 0 ? (
+      {total === 0 ? (
+        <p className="text-muted-foreground text-xs">Nothing planned for this area.</p>
+      ) : nextGoal && progress?.percentage !== null && progress !== undefined ? (
+        // A number the user is actually chasing beats a count of goals, so the
+        // next goal's own progress takes the space when the API can give one.
+        <GoalProgressBar goal={nextGoal.title} percentage={progress.percentage} />
+      ) : (
         <div className="flex flex-col gap-3">
           <ProgressBar total={total} completed={completed} />
 
@@ -116,8 +153,6 @@ export function AreaBentoCard({ summary, locale }: { summary: AreaSummary; local
             </p>
           )}
         </div>
-      ) : (
-        <p className="text-muted-foreground text-xs">Nothing planned for this area.</p>
       )}
     </Link>
   );

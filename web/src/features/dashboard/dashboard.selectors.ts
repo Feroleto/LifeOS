@@ -1,5 +1,6 @@
 import type { Area } from "@/features/areas/area.types";
 import type { Goal } from "@/features/goals/goal.types";
+import type { Habit, HabitFrequency, HabitSummary } from "@/features/habits/habit.types";
 
 /** The key of the bucket holding goals that belong to no area. */
 export const UNASSIGNED = "unassigned";
@@ -70,4 +71,64 @@ export function groupGoalsByArea(areas: Area[], goals: Goal[]): AreaSummary[] {
   return orphans.length > 0
     ? [...summaries, summarize(UNASSIGNED, null, "Unassigned", orphans)]
     : summaries;
+}
+
+/**
+ * The goals worth one `GET /goals/:id/progress` each: the next goal of every
+ * area, but only where a target exists — a qualitative goal has no percentage,
+ * so asking would spend a request on a guaranteed null.
+ *
+ * Deduplicated, because a goal shared by two areas is the next one in both.
+ */
+export function progressGoalIds(summaries: AreaSummary[]): string[] {
+  const ids = summaries.flatMap((summary) =>
+    summary.nextGoal && summary.nextGoal.targetValue !== null ? [summary.nextGoal.id] : [],
+  );
+
+  return [...new Set(ids)];
+}
+
+export type HabitsOverview = {
+  total: number;
+  /** Habits whose current period already meets their target. */
+  fulfilled: number;
+  /** One entry per habit, in the order given, for the segmented bar. */
+  segments: { id: string; name: string; isFulfilled: boolean }[];
+  /** The longest streak running right now, or null if none is. */
+  bestStreak: { name: string; streak: number; frequency: HabitFrequency } | null;
+};
+
+/**
+ * Folds the per-habit summaries into what one card can show.
+ *
+ * A habit whose summary has not arrived — or whose request failed — counts as
+ * not fulfilled rather than being dropped: the card promises "N of M", and
+ * quietly shrinking M would misreport how many habits the user keeps.
+ */
+export function summarizeHabits(
+  habits: Habit[],
+  summaries: Map<string, HabitSummary>,
+): HabitsOverview {
+  const segments = habits.map((habit) => ({
+    id: habit.id,
+    name: habit.name,
+    isFulfilled: summaries.get(habit.id)?.isFulfilled ?? false,
+  }));
+
+  const bestStreak = habits.reduce<HabitsOverview["bestStreak"]>((best, habit) => {
+    const streak = summaries.get(habit.id)?.currentStreak ?? 0;
+
+    if (streak === 0 || (best !== null && streak <= best.streak)) {
+      return best;
+    }
+
+    return { name: habit.name, streak, frequency: habit.frequency };
+  }, null);
+
+  return {
+    total: habits.length,
+    fulfilled: segments.filter((segment) => segment.isFulfilled).length,
+    segments,
+    bestStreak,
+  };
 }

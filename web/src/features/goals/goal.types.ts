@@ -16,12 +16,33 @@ export type Goal = {
   targetDate: string | null;
   /** Absent means a qualitative goal — 0 is a legitimate target. */
   targetValue: number | null;
+  /** Manually tracked progress. The API ignores it once metricKey is set. */
+  currentValue: number | null;
+  /** METRIC.key the API sums progress from, instead of currentValue. */
+  metricKey: string | null;
   unit: string | null;
   period: GoalPeriod | null;
   createdAt: string;
   updatedAt: string;
   /** GoalsService flattens GOAL_AREA, so these are whole Area records. */
   areas: Area[];
+};
+
+/**
+ * The answer of GET /goals/:id/progress. Calculated per request, so it is not
+ * part of the Goal itself — the API deliberately keeps it off the list to avoid
+ * one aggregate per goal.
+ */
+export type GoalProgress = {
+  goalId: string;
+  targetValue: number | null;
+  currentValue: number | null;
+  /**
+   * null is not zero: a qualitative goal, a target of 0 and nothing recorded
+   * yet all have no percentage. Above 100 means the target was beaten.
+   */
+  percentage: number | null;
+  source: "MANUAL" | "METRIC";
 };
 
 export type GoalFilters = {

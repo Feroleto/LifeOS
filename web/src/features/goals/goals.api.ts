@@ -1,9 +1,13 @@
 import { http } from "@/api/http";
 import type { CreateGoalBody, UpdateGoalBody } from "./goal.schemas";
-import type { Goal, GoalFilters } from "./goal.types";
+import type { Goal, GoalFilters, GoalProgress } from "./goal.types";
 
 export function listGoals(filters: GoalFilters): Promise<Goal[]> {
   return http.get<Goal[]>("/goals", { status: filters.status, areaId: filters.areaId });
+}
+
+export function getGoalProgress(id: string): Promise<GoalProgress> {
+  return http.get<GoalProgress>(`/goals/${id}/progress`);
 }
 
 export function createGoal(body: CreateGoalBody): Promise<Goal> {

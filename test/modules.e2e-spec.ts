@@ -198,16 +198,18 @@ describe("Habits, events, metrics and notes (e2e)", () => {
         .set("x-user-id", userId)
         .expect(200);
 
-      expect(january.body).toHaveLength(2);
+      expect(january.body.data).toHaveLength(2);
       // Ordered by occurredAt desc.
-      expect(january.body[0].type).toBe("GOAL_COMPLETED");
+      expect(january.body.data[0].type).toBe("GOAL_COMPLETED");
+      expect(january.body.meta).toEqual({ total: 2, page: 1, limit: 50, pages: 1 });
 
       const byType = await request(server)
         .get("/api/events?type=TRAINING_COMPLETED")
         .set("x-user-id", userId)
         .expect(200);
 
-      expect(byType.body).toHaveLength(2);
+      expect(byType.body.data).toHaveLength(2);
+      expect(byType.body.meta.total).toBe(2);
     });
 
     it("rejects an inverted range", async () => {
@@ -217,6 +219,87 @@ describe("Habits, events, metrics and notes (e2e)", () => {
         .get("/api/events?from=2026-02-01T00:00:00.000Z&to=2026-01-01T00:00:00.000Z")
         .set("x-user-id", userId)
         .expect(400);
+    });
+
+    it("pages through events without dropping or repeating one", async () => {
+      const userId = await createUser(USER_A);
+
+      // Every event shares the same occurredAt, which is the case that used to
+      // be unsafe: Timestamptz(0) ties leave the order undefined, so skip/take
+      // could return a row on two pages and never return another.
+      const SAME_INSTANT = "2026-03-01T09:00:00.000Z";
+
+      for (let index = 0; index < 5; index += 1) {
+        await request(server)
+          .post("/api/events")
+          .set("x-user-id", userId)
+          .send({ type: "TRAINING_COMPLETED", occurredAt: SAME_INSTANT, metadata: { index } })
+          .expect(201);
+      }
+
+      const seen: string[] = [];
+
+      for (const page of [1, 2, 3]) {
+        const response = await request(server)
+          .get(`/api/events?limit=2&page=${page}`)
+          .set("x-user-id", userId)
+          .expect(200);
+
+        expect(response.body.meta).toEqual({ total: 5, page, limit: 2, pages: 3 });
+        seen.push(...response.body.data.map((event: { id: string }) => event.id));
+      }
+
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toBe(5);
+    });
+
+    it("reports an honest page past the end instead of failing", async () => {
+      const userId = await createUser(USER_A);
+
+      await request(server)
+        .post("/api/events")
+        .set("x-user-id", userId)
+        .send(event)
+        .expect(201);
+
+      const response = await request(server)
+        .get("/api/events?page=9")
+        .set("x-user-id", userId)
+        .expect(200);
+
+      expect(response.body.data).toEqual([]);
+      expect(response.body.meta).toEqual({ total: 1, page: 9, limit: 50, pages: 1 });
+    });
+
+    it("counts what the filter matched, not the whole collection", async () => {
+      const userId = await createUser(USER_A);
+
+      for (const type of ["TRAINING_COMPLETED", "TRAINING_COMPLETED", "GOAL_COMPLETED"]) {
+        await request(server)
+          .post("/api/events")
+          .set("x-user-id", userId)
+          .send({ type, occurredAt: "2026-03-01T09:00:00.000Z" })
+          .expect(201);
+      }
+
+      const response = await request(server)
+        .get("/api/events?type=GOAL_COMPLETED&limit=1")
+        .set("x-user-id", userId)
+        .expect(200);
+
+      expect(response.body.meta.total).toBe(1);
+      expect(response.body.meta.pages).toBe(1);
+    });
+
+    it("rejects a page or limit outside its bounds", async () => {
+      const userId = await createUser(USER_A);
+
+      for (const query of ["page=0", "page=abc", "page=1.5", "limit=0", "limit=101"]) {
+        await request(server)
+          .get(`/api/events?${query}`)
+          .set("x-user-id", userId)
+          .expect(400);
+      }
     });
 
     it("exposes no PATCH route — events are append-only", async () => {
@@ -310,8 +393,37 @@ describe("Habits, events, metrics and notes (e2e)", () => {
         .set("x-user-id", userId)
         .expect(200);
 
-      expect(series.body).toHaveLength(1);
-      expect(series.body[0].value).toBe(7);
+      expect(series.body.data).toHaveLength(1);
+      expect(series.body.data[0].value).toBe(7);
+      expect(series.body.meta).toEqual({ total: 1, page: 1, limit: 50, pages: 1 });
+    });
+
+    it("pages through a series without dropping or repeating a point", async () => {
+      const userId = await createUser(USER_A);
+
+      // Same recordedAt for all three: the metric ordering has its own
+      // tie-breaker, so it needs its own proof.
+      for (const value of [7, 7.5, 8]) {
+        await request(server)
+          .post("/api/metrics")
+          .set("x-user-id", userId)
+          .send({ key: "sleep_hours", value, recordedAt: "2026-03-01T09:00:00.000Z" })
+          .expect(201);
+      }
+
+      const seen: string[] = [];
+
+      for (const page of [1, 2]) {
+        const response = await request(server)
+          .get(`/api/metrics?key=sleep_hours&limit=2&page=${page}`)
+          .set("x-user-id", userId)
+          .expect(200);
+
+        expect(response.body.meta).toEqual({ total: 3, page, limit: 2, pages: 2 });
+        seen.push(...response.body.data.map((metric: { id: string }) => metric.id));
+      }
+
+      expect(new Set(seen).size).toBe(3);
     });
 
     it("does not expose another user's metric", async () => {

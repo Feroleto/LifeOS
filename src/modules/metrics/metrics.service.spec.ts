@@ -24,9 +24,13 @@ function createPrismaMock() {
     metric: {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       findFirst: jest.fn(),
       delete: jest.fn(),
     },
+    // findAll runs the page and the count together, so the mock has to settle
+    // both the way a real transaction would.
+    $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
   };
 }
 
@@ -38,6 +42,8 @@ describe("MetricsService", () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
+    prisma.metric.findMany.mockResolvedValue([]);
+    prisma.metric.count.mockResolvedValue(0);
     service = new MetricsService(prisma as unknown as PrismaService);
   });
 
@@ -72,8 +78,6 @@ describe("MetricsService", () => {
 
   describe("findAll", () => {
     it("filters a single series over a closed range", async () => {
-      prisma.metric.findMany.mockResolvedValue([]);
-
       await service.findAll(USER_ID, { key: "sleep_hours", from: FROM, to: TO });
 
       expect(prisma.metric.findMany).toHaveBeenCalledWith({
@@ -82,7 +86,9 @@ describe("MetricsService", () => {
           key: "sleep_hours",
           recordedAt: { gte: FROM, lte: TO },
         },
-        orderBy: { recordedAt: "desc" },
+        orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        skip: 0,
+        take: 50,
       });
     });
 
@@ -92,6 +98,35 @@ describe("MetricsService", () => {
       );
 
       expect(prisma.metric.findMany).not.toHaveBeenCalled();
+    });
+
+    it("breaks recordedAt ties on id, so a row cannot straddle two pages", async () => {
+      await service.findAll(USER_ID, {});
+
+      expect(prisma.metric.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        }),
+      );
+    });
+
+    it("turns page and limit into an offset", async () => {
+      await service.findAll(USER_ID, { page: 4, limit: 25 });
+
+      expect(prisma.metric.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 75, take: 25 }),
+      );
+    });
+
+    it("counts the whole series rather than the page", async () => {
+      prisma.metric.count.mockResolvedValue(365);
+
+      const result = await service.findAll(USER_ID, { key: "sleep_hours", limit: 100 });
+
+      expect(prisma.metric.count).toHaveBeenCalledWith({
+        where: { userId: USER_ID, key: "sleep_hours", recordedAt: undefined },
+      });
+      expect(result.meta).toEqual({ total: 365, page: 1, limit: 100, pages: 4 });
     });
   });
 

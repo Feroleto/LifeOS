@@ -13,6 +13,7 @@ import {
 
 import type { Event } from "../../generated/prisma/client";
 import { CurrentUser } from "../../shared/auth/current-user.decorator";
+import type { Paginated } from "../../shared/query/pagination";
 import { CreateEventDto } from "./dto/create-event.dto";
 import { FindEventsQueryDto } from "./dto/find-events-query.dto";
 import { EventsService } from "./events.service";
@@ -31,7 +32,7 @@ export class EventsController {
   findAll(
     @CurrentUser() userId: string,
     @Query() query: FindEventsQueryDto,
-  ): Promise<Event[]> {
+  ): Promise<Paginated<Event>> {
     return this.events.findAll(userId, query);
   }
 

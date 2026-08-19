@@ -4,6 +4,8 @@ import type { Metric, Prisma } from "../../generated/prisma/client";
 import { MetricSource } from "../../generated/prisma/enums";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { toDateRangeFilter } from "../../shared/query/date-range";
+import { resolvePagination, toPage } from "../../shared/query/pagination";
+import type { Paginated } from "../../shared/query/pagination";
 import { CreateMetricDto } from "./dto/create-metric.dto";
 import { FindMetricsQueryDto } from "./dto/find-metrics-query.dto";
 
@@ -31,7 +33,7 @@ export class MetricsService {
 
   // async so an invalid range rejects the promise instead of throwing
   // synchronously out of a method whose signature says it returns one.
-  async findAll(userId: string, query: FindMetricsQueryDto): Promise<Metric[]> {
+  async findAll(userId: string, query: FindMetricsQueryDto): Promise<Paginated<Metric>> {
     const where: Prisma.MetricWhereInput = { userId };
 
     if (query.key) {
@@ -44,8 +46,23 @@ export class MetricsService {
 
     where.recordedAt = toDateRangeFilter(query);
 
-    // Matches the metric_userId_key_recordedAt index.
-    return this.prisma.metric.findMany({ where, orderBy: { recordedAt: "desc" } });
+    const { page, limit, skip, take } = resolvePagination(query);
+
+    // One transaction so the count describes the same snapshot as the rows.
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.metric.findMany({
+        where,
+        // recordedAt leads, to match the metric_userId_key_recordedAt index,
+        // but it is Timestamptz(0) and repeats, so `id` breaks the ties into a
+        // total order — without it, skip/take could drop or duplicate rows.
+        orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        skip,
+        take,
+      }),
+      this.prisma.metric.count({ where }),
+    ]);
+
+    return toPage(data, total, page, limit);
   }
 
   async findOne(userId: string, id: string): Promise<Metric> {

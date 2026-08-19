@@ -13,6 +13,7 @@ import {
 
 import type { Metric } from "../../generated/prisma/client";
 import { CurrentUser } from "../../shared/auth/current-user.decorator";
+import type { Paginated } from "../../shared/query/pagination";
 import { CreateMetricDto } from "./dto/create-metric.dto";
 import { FindMetricsQueryDto } from "./dto/find-metrics-query.dto";
 import { MetricsService } from "./metrics.service";
@@ -31,7 +32,7 @@ export class MetricsController {
   findAll(
     @CurrentUser() userId: string,
     @Query() query: FindMetricsQueryDto,
-  ): Promise<Metric[]> {
+  ): Promise<Paginated<Metric>> {
     return this.metrics.findAll(userId, query);
   }
 

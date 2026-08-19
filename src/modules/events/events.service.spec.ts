@@ -23,9 +23,13 @@ function createPrismaMock() {
     event: {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       findFirst: jest.fn(),
       delete: jest.fn(),
     },
+    // findAll runs the page and the count together, so the mock has to settle
+    // both the way a real transaction would.
+    $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
   };
 }
 
@@ -37,6 +41,8 @@ describe("EventsService", () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
+    prisma.event.findMany.mockResolvedValue([]);
+    prisma.event.count.mockResolvedValue(0);
     service = new EventsService(prisma as unknown as PrismaService);
   });
 
@@ -77,19 +83,17 @@ describe("EventsService", () => {
 
   describe("findAll", () => {
     it("turns from/to into an inclusive range on occurredAt", async () => {
-      prisma.event.findMany.mockResolvedValue([]);
-
       await service.findAll(USER_ID, { from: FROM, to: TO });
 
       expect(prisma.event.findMany).toHaveBeenCalledWith({
         where: { userId: USER_ID, occurredAt: { gte: FROM, lte: TO } },
-        orderBy: { occurredAt: "desc" },
+        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+        skip: 0,
+        take: 50,
       });
     });
 
     it("accepts an open-ended range", async () => {
-      prisma.event.findMany.mockResolvedValue([]);
-
       await service.findAll(USER_ID, { from: FROM });
 
       expect(prisma.event.findMany).toHaveBeenCalledWith(
@@ -100,8 +104,6 @@ describe("EventsService", () => {
     });
 
     it("leaves occurredAt unfiltered when no bound is given", async () => {
-      prisma.event.findMany.mockResolvedValue([]);
-
       await service.findAll(USER_ID, { type: "GOAL_COMPLETED" });
 
       expect(prisma.event.findMany).toHaveBeenCalledWith(
@@ -117,6 +119,43 @@ describe("EventsService", () => {
       );
 
       expect(prisma.event.findMany).not.toHaveBeenCalled();
+    });
+
+    it("breaks occurredAt ties on id, so a row cannot straddle two pages", async () => {
+      await service.findAll(USER_ID, {});
+
+      expect(prisma.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+        }),
+      );
+    });
+
+    it("turns page and limit into an offset", async () => {
+      await service.findAll(USER_ID, { page: 3, limit: 20 });
+
+      expect(prisma.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 40, take: 20 }),
+      );
+    });
+
+    it("counts the whole filtered set rather than the page", async () => {
+      prisma.event.findMany.mockResolvedValue([eventRecord]);
+      prisma.event.count.mockResolvedValue(1284);
+
+      const result = await service.findAll(USER_ID, { type: "TRAINING_COMPLETED", page: 2 });
+
+      expect(prisma.event.count).toHaveBeenCalledWith({
+        where: { userId: USER_ID, type: "TRAINING_COMPLETED", occurredAt: undefined },
+      });
+      expect(result.data).toEqual([eventRecord]);
+      expect(result.meta).toEqual({ total: 1284, page: 2, limit: 50, pages: 26 });
+    });
+
+    it("reads the page and the count in one transaction", async () => {
+      await service.findAll(USER_ID, {});
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -2,8 +2,9 @@ import { Type } from "class-transformer";
 import { IsDate, IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
 
 import { MetricSource } from "../../../generated/prisma/enums";
+import { PaginationQueryDto } from "../../../shared/query/pagination";
 
-export class FindMetricsQueryDto {
+export class FindMetricsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(60)

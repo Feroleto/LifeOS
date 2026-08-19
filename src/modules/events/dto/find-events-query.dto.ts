@@ -2,8 +2,9 @@ import { Type } from "class-transformer";
 import { IsDate, IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
 
 import { EventSource } from "../../../generated/prisma/enums";
+import { PaginationQueryDto } from "../../../shared/query/pagination";
 
-export class FindEventsQueryDto {
+export class FindEventsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(80)

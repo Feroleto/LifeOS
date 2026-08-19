@@ -29,6 +29,10 @@ function createPrismaMock() {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    // A completion is an Event, so the habit module writes into that table.
+    event: { create: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+    user: { findUniqueOrThrow: jest.fn() },
+    $transaction: jest.fn(),
   };
 }
 
@@ -163,6 +167,102 @@ describe("HabitsService", () => {
       );
 
       expect(prisma.habit.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("complete", () => {
+    it("records an Event carrying the habit id in metadata", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.event.create.mockResolvedValue({ id: "event-1" });
+
+      const occurredAt = new Date("2026-08-19T12:00:00.000Z");
+
+      await service.complete(USER_ID, HABIT_ID, { occurredAt });
+
+      expect(prisma.event.create).toHaveBeenCalledWith({
+        data: {
+          userId: USER_ID,
+          type: "HABIT_COMPLETED",
+          source: "CORE",
+          occurredAt,
+          metadata: { habitId: HABIT_ID },
+        },
+      });
+    });
+
+    it("defaults the moment to now", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.event.create.mockResolvedValue({ id: "event-1" });
+
+      const before = Date.now();
+      await service.complete(USER_ID, HABIT_ID, {});
+
+      const { occurredAt } = prisma.event.create.mock.calls[0]![0].data;
+
+      expect(occurredAt.getTime()).toBeGreaterThanOrEqual(before);
+    });
+
+    it("refuses to log against another user's habit", async () => {
+      prisma.habit.findFirst.mockResolvedValue(null);
+
+      await expect(service.complete(USER_ID, HABIT_ID, {})).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+
+      expect(prisma.event.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("findSummary", () => {
+    it("counts the current period against the habit's own target", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ timezone: "UTC" });
+
+      // Four sessions inside the ISO week that holds "now".
+      const now = new Date();
+      const thisWeek = [0, 1, 2, 3].map((days) => ({
+        occurredAt: new Date(now.getTime() - days * 60_000),
+      }));
+
+      prisma.event.findMany.mockResolvedValue(thisWeek);
+
+      const summary = await service.findSummary(USER_ID, HABIT_ID);
+
+      expect(summary).toMatchObject({
+        habitId: HABIT_ID,
+        frequency: "WEEKLY",
+        frequencyTarget: 4,
+        completionsInPeriod: 4,
+        isFulfilled: true,
+        currentStreak: 1,
+      });
+    });
+
+    it("is not fulfilled below the target", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ timezone: "UTC" });
+      prisma.event.findMany.mockResolvedValue([{ occurredAt: new Date() }]);
+
+      const summary = await service.findSummary(USER_ID, HABIT_ID);
+
+      expect(summary).toMatchObject({ completionsInPeriod: 1, isFulfilled: false });
+    });
+
+    it("reads the window it counted from, so the answer is not open-ended", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ timezone: "UTC" });
+      prisma.event.findMany.mockResolvedValue([]);
+
+      const summary = await service.findSummary(USER_ID, HABIT_ID);
+
+      expect(summary.currentStreak).toBe(0);
+      expect(prisma.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            occurredAt: { gte: summary.countedSince },
+          }),
+        }),
+      );
     });
   });
 });

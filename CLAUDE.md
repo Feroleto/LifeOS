@@ -32,6 +32,13 @@ npm run test:e2e       # e2e against the lifeos_test database
 npx tsc --noEmit       # typecheck (includes prisma/ and test/, which nest build excludes)
 ```
 
+`tsconfig.build.json` puts `tsBuildInfoFile` **inside `dist/`** on purpose. `nest-cli.json`
+sets `deleteOutDir: true`, so every build wipes `dist/`; at its default location (the
+project root) the incremental state outlived the output it described, told tsc everything
+was already emitted, and the build silently produced nothing — leaving `nest build`,
+`start:dev` and `start:prod` failing with `Cannot find module dist/main` on any warm tree.
+Keeping the two together makes that state impossible. Do not move it back out of `dist/`.
+
 Single test:
 
 ```bash

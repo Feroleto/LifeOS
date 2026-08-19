@@ -1,7 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // Inside outDir on purpose. `deleteOutDir` wipes dist/ before every build,
+    // and the incremental state must not outlive the output it describes:
+    // left at the default (the project root), it survives the wipe, tells tsc
+    // everything is already emitted, and the build silently produces nothing.
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "prisma", "**/*.spec.ts", "**/*.e2e-spec.ts"]

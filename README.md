@@ -500,5 +500,6 @@ Implications:
 ## Next steps
 
 1. Real authentication, replacing `CurrentUserGuard`.
-2. Web: the remaining Core screens — habits, notes and the timeline — and wiring the
-   dashboard to `/goals/:id/progress` and `/habits/:id/summary`, which it does not read yet.
+2. Web: the remaining Core screens — habits, notes and the timeline. The dashboard already
+   reads `/goals/:id/progress` and `/habits/:id/summary`, but habits can only be created
+   and completed through the API, since no screen does it yet.

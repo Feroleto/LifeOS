@@ -108,6 +108,16 @@ Three things the design implies that the code has to earn:
   read on white, so `AreaBentoCard` mixes toward black in oklab and derives the light chip
   tint the same way. One column, two colors, no second field.
 
+The dashboard reads two derived endpoints the API deliberately keeps off its list
+responses, so each costs one request per record and the fan-out is narrowed before it is
+made. `GET /goals/:id/progress` is asked only for the goals a bar will actually be drawn
+for — the next goal of each area, and only where `targetValue` exists, since a qualitative
+goal is guaranteed a null percentage — deduplicated, because a goal shared by two areas is
+next in both. `GET /habits/:id/summary` is asked only for `ACTIVE` habits. Both use
+`useQueries` with `combine`, and both drop a failed request instead of raising it: one goal
+must not blank the card it shares. Widening either selection is what turns the page into
+dozens of requests.
+
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.
 

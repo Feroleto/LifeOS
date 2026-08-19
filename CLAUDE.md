@@ -12,8 +12,10 @@ introducing any new entity — it defines what belongs in the Core vs. in a futu
 and section 17 lists architectural rules the schema is meant to obey.
 
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
-`goals`, `habits`, `events`, `metrics` and `notes` — plus a web V1 in `web/` covering
-`areas` and `goals`.
+`goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
+`web/` with screens for `areas` and `goals` and a dashboard that also reads habits.
+`habits`, `events`, `metrics` and `notes` have no screen of their own yet, so a habit can
+only be created and completed through the API.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -21,15 +23,18 @@ Treat a missing `updatedAt` as the model's way of saying a record is not edited,
 not add one without the user deciding to change that contract.
 
 `/events`, `/metrics`, `/timeline` and `/habits/:id/completions` are the paginated
-collections — every one of them a view over unbounded, append-only records — and the only
-ones answering `{ data, meta }` instead of a bare array. The shared pieces live in
+collections, and the only ones answering `{ data, meta }` instead of a bare array. What
+they share is being **unbounded**, not being append-only — the timeline includes notes,
+which are edited like any other record. The shared pieces live in
 `src/shared/query/pagination.ts`; defaults (page 1, limit 50) are resolved there rather
 than as DTO field initializers, matching how services and not the schema decide a goal's
 `ACTIVE`.
 
-Both order by a `Timestamptz(0)` column, so ties are common and the timestamp alone is not
-a total order: `id` is appended to `orderBy` because otherwise `skip`/`take` could return a
-row on two pages and skip another. Keep the tie-breaker on any new paginated query.
+Every one of them orders by a `Timestamptz(0)` column, so ties are common and the
+timestamp alone is not a total order: `id` is appended to `orderBy` because otherwise
+`skip`/`take` could return a row on two pages and skip another. The timeline needs it
+across two tables at once, where an event and a note from the same second would otherwise
+have no defined order. Keep the tie-breaker on any new paginated query.
 
 ## Three derived reads, and why they are shaped that way
 

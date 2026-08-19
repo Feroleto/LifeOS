@@ -108,8 +108,10 @@ whose `to` precedes its `from` is a 400.
 ### Pagination
 
 `/events`, `/metrics`, `/timeline` and `/habits/:id/completions` are the paginated
-collections — all of them views over append-only records — and they answer with an
-envelope instead of a bare array:
+collections. What they have in common is being unbounded, not being append-only — the
+timeline includes notes, which are edited like any other record.
+
+They answer with an envelope instead of a bare array:
 
 ```
 GET /api/events?page=2&limit=50
@@ -129,9 +131,9 @@ clamp. A page past the end is not an error: it returns an empty `data` with the 
 transaction as the rows so the two describe one snapshot.
 
 The other collections stay bare arrays on purpose. The asymmetry follows the domain
-rather than taste: events and metrics are append-only and unbounded, while a person has a
-handful of areas and a few dozen goals, habits and notes. Paginating those would be the
-premature generalisation section 17 warns about.
+rather than taste: events, metrics and the completions and timeline built on them grow
+without limit, while a person has a handful of areas and a few dozen goals, habits and
+notes. Paginating those would be the premature generalisation section 17 warns about.
 
 One consequence worth knowing: both collections order by a `Timestamptz(0)` column, whose
 one-second resolution makes ties common. `occurredAt` and `recordedAt` therefore cannot

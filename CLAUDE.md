@@ -20,7 +20,15 @@ Current state: backend V1 with the whole Core exposed over HTTP — `users`, `ar
 Treat a missing `updatedAt` as the model's way of saying a record is not edited, and do
 not add one without the user deciding to change that contract.
 
-Neither `/events` nor `/metrics` is paginated yet, which is the main known gap.
+`/events` and `/metrics` are the only paginated collections — they are the only unbounded
+ones — and they are the only ones answering `{ data, meta }` instead of a bare array. The
+shared pieces live in `src/shared/query/pagination.ts`; defaults (page 1, limit 50) are
+resolved there rather than as DTO field initializers, matching how services and not the
+schema decide a goal's `ACTIVE`.
+
+Both order by a `Timestamptz(0)` column, so ties are common and the timestamp alone is not
+a total order: `id` is appended to `orderBy` because otherwise `skip`/`take` could return a
+row on two pages and skip another. Keep the tie-breaker on any new paginated query.
 
 ## The web app
 

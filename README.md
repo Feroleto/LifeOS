@@ -75,11 +75,11 @@ Global prefix: `/api`.
 | PATCH  | `/habits/:id`  |                                             |
 | DELETE | `/habits/:id`  | 204                                         |
 | POST   | `/events`      | `source` defaults to `CORE`, `metadata` to `{}` |
-| GET    | `/events`      | filters `?type=`, `?source=`, `?from=`, `?to=`  |
+| GET    | `/events`      | paginated; filters `?type=`, `?source=`, `?from=`, `?to=` |
 | GET    | `/events/:id`  |                                             |
 | DELETE | `/events/:id`  | 204                                         |
 | POST   | `/metrics`     | `source` defaults to `CORE`, `metadata` to `{}` |
-| GET    | `/metrics`     | filters `?key=`, `?source=`, `?from=`, `?to=`   |
+| GET    | `/metrics`     | paginated; filters `?key=`, `?source=`, `?from=`, `?to=`  |
 | GET    | `/metrics/:id` |                                             |
 | DELETE | `/metrics/:id` | 204                                         |
 | POST   | `/notes`       |                                             |
@@ -99,6 +99,38 @@ silently rewritten. Habits and notes do have `updatedAt` and take the usual `PAT
 for metrics — the columns their indexes are built on. Both are the moment the thing
 happened, as opposed to `createdAt`, which is when it reached the database. A range
 whose `to` precedes its `from` is a 400.
+
+### Pagination
+
+`/events` and `/metrics` are the only paginated collections, and they answer with an
+envelope instead of a bare array:
+
+```
+GET /api/events?page=2&limit=50
+
+{
+  "data": [ ... ],
+  "meta": { "total": 1284, "page": 2, "limit": 50, "pages": 26 }
+}
+```
+
+`page` is 1-based and defaults to 1; `limit` defaults to 50 and is capped at 100. Values
+outside those bounds — `page=0`, `page=1.5`, `limit=101` — are a 400 rather than a silent
+clamp. A page past the end is not an error: it returns an empty `data` with the real
+`total` and `pages`.
+
+`total` counts everything the filters matched, not the page, and it is read in the same
+transaction as the rows so the two describe one snapshot.
+
+The other collections stay bare arrays on purpose. The asymmetry follows the domain
+rather than taste: events and metrics are append-only and unbounded, while a person has a
+handful of areas and a few dozen goals, habits and notes. Paginating those would be the
+premature generalisation section 17 warns about.
+
+One consequence worth knowing: both collections order by a `Timestamptz(0)` column, whose
+one-second resolution makes ties common. `occurredAt` and `recordedAt` therefore cannot
+order rows on their own — under `skip`/`take` a tie could hand the same row to two pages
+and never return another — so `id` is appended as a tie-breaker to make the order total.
 
 ### Naming conventions the API enforces
 
@@ -372,8 +404,6 @@ Implications:
 
 ## Next steps
 
-1. Pagination on `/events` and `/metrics`. They are append-only and grow without bound,
-   so today a list request returns the user's whole history.
-2. Timeline (events + notes) and goal progress calculation.
-3. Real authentication, replacing `CurrentUserGuard`.
-4. Web: the remaining Core screens (habits, notes, timeline) and the dashboard.
+1. Timeline (events + notes) and goal progress calculation.
+2. Real authentication, replacing `CurrentUserGuard`.
+3. Web: the remaining Core screens (habits, notes, timeline) and the dashboard.

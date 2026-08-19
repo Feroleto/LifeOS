@@ -20,15 +20,46 @@ Current state: backend V1 with the whole Core exposed over HTTP — `users`, `ar
 Treat a missing `updatedAt` as the model's way of saying a record is not edited, and do
 not add one without the user deciding to change that contract.
 
-`/events` and `/metrics` are the only paginated collections — they are the only unbounded
-ones — and they are the only ones answering `{ data, meta }` instead of a bare array. The
-shared pieces live in `src/shared/query/pagination.ts`; defaults (page 1, limit 50) are
-resolved there rather than as DTO field initializers, matching how services and not the
-schema decide a goal's `ACTIVE`.
+`/events`, `/metrics`, `/timeline` and `/habits/:id/completions` are the paginated
+collections — every one of them a view over unbounded, append-only records — and the only
+ones answering `{ data, meta }` instead of a bare array. The shared pieces live in
+`src/shared/query/pagination.ts`; defaults (page 1, limit 50) are resolved there rather
+than as DTO field initializers, matching how services and not the schema decide a goal's
+`ACTIVE`.
 
 Both order by a `Timestamptz(0)` column, so ties are common and the timestamp alone is not
 a total order: `id` is appended to `orderBy` because otherwise `skip`/`take` could return a
 row on two pages and skip another. Keep the tie-breaker on any new paginated query.
+
+## Three derived reads, and why they are shaped that way
+
+None of these three stores its answer. All are governed by `life-os-foundation.md`, which
+is the reason they look the way they do rather than the more obvious way.
+
+**`GET /goals/:id/progress`** (foundation section 8). `Goal` carries two optional scalars:
+`currentValue`, which the user maintains, and `metricKey`, which replaces it by summing the
+matching `METRIC.value` over the goal's own date window. Two scalars, deliberately, because
+section 8 rules out a polymorphic `GoalProgressDefinition` in V1. `metricKey` is validated
+against `src/shared/domain/metric-key.ts` — the same rule metrics enforce, so a goal cannot
+name a series metrics would reject. `percentage` is `null` for a qualitative goal, for a
+target of `0`, and before anything is recorded; it is not capped at 100. It is **not**
+embedded in `GET /goals`: the aggregate is scoped per goal, so a list would mean N queries.
+
+**Habit completions are events, not a table** (sections 7.1 and 5.2). `POST
+/habits/:id/completions` writes an `HABIT_COMPLETED` event whose `metadata.habitId` names
+the habit; `src/modules/habits/habit-events.ts` holds the type and the JSONB filter. It
+follows that the completion reaches the timeline for free and is deleted through
+`DELETE /events/:id`, and that nothing enforces one per day — the route is not idempotent
+and should not be made so without changing the model. Streaks bucket by the **user's own
+`timezone`** (`habit-streak.ts`), never UTC: an evening completion in São Paulo would
+otherwise land on the next day and break the streak the user sees. The in-progress period
+never breaks a streak, and `STREAK_LOOKBACK_DAYS` bounds how far back the answer looked.
+
+**`GET /timeline`** (section 6). A view owning no table, merging events and notes. Notes
+belong to it directly — creating one must never emit a `NOTE_CREATED` event just to make it
+appear, which would duplicate the record. Paging merges two tables by reading `skip + take`
+from each and slicing the merged order (`timeline-item.ts` proves why that is enough), so a
+deep page costs more than a shallow one.
 
 ## The web app
 
@@ -53,6 +84,29 @@ Four rules the client encodes, each of which the backend would otherwise punish:
 - **Errors have three shapes** and `PrismaExceptionFilter` puts the Prisma code where the
   others put the HTTP phrase. `api/api-error.ts` normalizes them; branch on `status`,
   never on the message text.
+
+The visual identity comes from a Figma file (`M9gCdQiSAujkjbKt9PbSZd`, frame `3:10`), which
+defines no Figma Variables — so `web/src/index.css` *is* the token layer, holding hex copied
+from that file under shadcn's own variable names. Keeping those names is what lets Goals and
+Areas inherit the theme without touching their components; change values there, not classes
+in components. The `.dark` block is left at the shadcn defaults on purpose: the design is
+light-only and the app ships no theme toggle, so it is dormant rather than designed.
+
+Three things the design implies that the code has to earn:
+
+- **The sidebar is driven by `GET /areas`**, not by Core concepts — the design's navigation
+  is a list of life areas, so each item filters `/goals` by one area. `NavLink`'s own
+  `isActive` ignores the query string, so the area items compare it themselves.
+- **The dashboard shows only what the API sustains.** The design's cards promise habit
+  streaks, task checkboxes, a balance and a course percentage; the Core has no habit
+  completion log, no Task, no `Goal.currentValue` and no finance module. Those widgets are
+  deliberately absent, not pending. Each card summarizes one `Area` from `GET /areas` plus
+  `GET /goals` — two requests, no dashboard endpoint, and habits stay out because `Habit`
+  has no relation to `Area`.
+- **`Area.color` is darkened before it is used as text.** Stored colors are mid tones picked
+  through a color input (`#22c55e`, `#eab308`) while the design's accents are dark enough to
+  read on white, so `AreaBentoCard` mixes toward black in oklab and derives the light chip
+  tint the same way. One column, two colors, no second field.
 
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.

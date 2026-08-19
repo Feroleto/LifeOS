@@ -67,11 +67,15 @@ Global prefix: `/api`.
 | POST   | `/goals`       | accepts `areaIds: string[]` (N:N)           |
 | GET    | `/goals`       | filters `?status=` and `?areaId=`           |
 | GET    | `/goals/:id`   | returns `areas` already flattened           |
+| GET    | `/goals/:id/progress` | calculated per request, never stored |
 | PATCH  | `/goals/:id`   | `areaIds` replaces the whole set of areas   |
 | DELETE | `/goals/:id`   | 204                                         |
 | POST   | `/habits`      | `status` defaults to `ACTIVE`               |
 | GET    | `/habits`      | filters `?status=` and `?frequency=`        |
 | GET    | `/habits/:id`  |                                             |
+| POST   | `/habits/:id/completions` | records an `HABIT_COMPLETED` event |
+| GET    | `/habits/:id/completions` | paginated; filters `?from=`, `?to=` |
+| GET    | `/habits/:id/summary` | current period, target and streak    |
 | PATCH  | `/habits/:id`  |                                             |
 | DELETE | `/habits/:id`  | 204                                         |
 | POST   | `/events`      | `source` defaults to `CORE`, `metadata` to `{}` |
@@ -87,6 +91,7 @@ Global prefix: `/api`.
 | GET    | `/notes/:id`   |                                             |
 | PATCH  | `/notes/:id`   |                                             |
 | DELETE | `/notes/:id`   | 204                                         |
+| GET    | `/timeline`    | paginated; filters `?kind=`, `?from=`, `?to=` |
 
 ### Append-only records
 
@@ -102,7 +107,8 @@ whose `to` precedes its `from` is a 400.
 
 ### Pagination
 
-`/events` and `/metrics` are the only paginated collections, and they answer with an
+`/events`, `/metrics`, `/timeline` and `/habits/:id/completions` are the paginated
+collections — all of them views over append-only records — and they answer with an
 envelope instead of a bare array:
 
 ```
@@ -131,6 +137,95 @@ One consequence worth knowing: both collections order by a `Timestamptz(0)` colu
 one-second resolution makes ties common. `occurredAt` and `recordedAt` therefore cannot
 order rows on their own — under `skip`/`take` a tie could hand the same row to two pages
 and never return another — so `id` is appended as a tie-breaker to make the order total.
+
+### Goal progress
+
+`GET /goals/:id/progress` answers with the calculation, not with a stored column:
+
+```
+{ "goalId": "...", "targetValue": 15, "currentValue": 9.5, "percentage": 63.3, "source": "METRIC" }
+```
+
+Where `currentValue` comes from depends on the goal:
+
+- **`MANUAL`** — the `currentValue` field on the goal, updated through `PATCH /goals/:id`.
+- **`METRIC`** — the sum of `METRIC.value` for the goal's `metricKey`, restricted to the
+  goal's own `startDate`/`targetDate` window. Setting `metricKey` makes the stored
+  `currentValue` irrelevant, since the series is the answer.
+
+`metricKey` is validated against the same rule as `METRIC.key`, so a goal can never name a
+series the metrics endpoint would refuse to create.
+
+`percentage` is `null` rather than a number in three cases, all of them "the question does
+not apply": a goal with no `targetValue` is qualitative; a target of `0` has no ratio; and
+nothing recorded yet is not the same as zero progress. It is **not** capped at 100 — beating
+a target reports what actually happened. Foundation section 8 is the contract here, including
+its refusal to introduce a polymorphic progress definition in V1.
+
+Deriving progress costs one aggregate scoped to one goal's window, so `GET /goals` does not
+embed it: a list of N goals would mean N extra queries. The list still carries `currentValue`,
+which is all a manually tracked goal needs.
+
+### Habit completions
+
+A habit completion is **an event, not a table of its own**. `POST /habits/:id/completions`
+writes an ordinary `HABIT_COMPLETED` event whose `metadata` names the habit:
+
+```
+{ "type": "HABIT_COMPLETED", "source": "CORE", "occurredAt": "...", "metadata": { "habitId": "..." } }
+```
+
+That follows foundation section 7.1, which places a completion in the event model, and
+section 5.2, which references the source entity through `metadata` rather than through a
+polymorphic key. Two consequences follow: the completion shows up in `/events` and in the
+timeline without the habits module publishing it anywhere, and it is removed with
+`DELETE /events/:id` — there is no separate delete route.
+
+Two costs come with the choice, both deliberate. Nothing in the database makes a completion
+unique per day, so `POST` twice records twice — the route is not idempotent. And deleting a
+habit leaves its completions behind: there is no foreign key to cascade through, and the
+sessions did happen, so dropping them would rewrite the timeline. `metadata.habitId` then
+names a habit that no longer exists.
+
+`GET /habits/:id/summary` answers where the habit stands **now**:
+
+```
+{ "period": "2026-W34", "completionsInPeriod": 3, "isFulfilled": false, "currentStreak": 2, ... }
+```
+
+- `period` is a day, an ISO week or a month, following the habit's `frequency`, and it is
+  resolved in the **user's own time zone** — a run logged at 22:00 in São Paulo belongs to
+  that day, not to the next one it falls on in UTC.
+- A period counts as fulfilled at `frequencyTarget` completions, the same number the habit
+  is defined by.
+- `currentStreak` counts consecutive fulfilled periods. The period in progress never breaks
+  it: an unfinished today falls back to counting from yesterday. Only a finished, unfulfilled
+  period ends the streak.
+- `countedSince` reports how far back the answer looked. History older than that window is
+  not read, which is what keeps the query bounded.
+
+### Timeline
+
+`GET /timeline` is a read-only view that interleaves events and notes into one chronological
+list. It owns no table: every row is served by `/events` or `/notes`, which stay the source
+of truth, and creating a note does **not** emit a `NOTE_CREATED` event just to appear here
+(foundation section 6).
+
+Each item normalizes only what ordering needs and carries the original record intact:
+
+```
+{ "kind": "EVENT", "id": "...", "occurredAt": "...", "event": { ... } }
+{ "kind": "NOTE",  "id": "...", "occurredAt": "...", "note":  { ... } }
+```
+
+`occurredAt` is the event's own `occurredAt`, and for a note the `createdAt` — when it was
+written is when it belongs. `?kind=EVENT` or `?kind=NOTE` restricts it to one source;
+`?from=`/`?to=` filter both.
+
+Paging merges two tables, so each page reads its own `page * limit` rows from both and slices
+the merged order. That is exactly enough to be correct — an item inside the merged window
+cannot sit deeper than that in its own source — and it is why a deep page costs more than a
+shallow one.
 
 ### Naming conventions the API enforces
 
@@ -404,6 +499,6 @@ Implications:
 
 ## Next steps
 
-1. Timeline (events + notes) and goal progress calculation.
-2. Real authentication, replacing `CurrentUserGuard`.
-3. Web: the remaining Core screens (habits, notes, timeline) and the dashboard.
+1. Real authentication, replacing `CurrentUserGuard`.
+2. Web: the remaining Core screens — habits, notes and the timeline — and wiring the
+   dashboard to `/goals/:id/progress` and `/habits/:id/summary`, which it does not read yet.

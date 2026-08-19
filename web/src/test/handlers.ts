@@ -51,3 +51,6 @@ export const meHandler = () => msw.get("/api/users/me", () => HttpResponse.json(
 
 export const areasHandler = (areas: Area[]) =>
   msw.get("/api/areas", () => HttpResponse.json(areas));
+
+export const goalsHandler = (goals: Goal[]) =>
+  msw.get("/api/goals", () => HttpResponse.json(goals));

@@ -32,7 +32,13 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:validate": "prisma validate",
-    "db:format": "prisma format"
+    "db:format": "prisma format",
+    "web:install": "npm --prefix web install",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:typecheck": "npm --prefix web run typecheck",
+    "web:lint": "npm --prefix web run lint",
+    "web:test": "npm --prefix web run test"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.1",

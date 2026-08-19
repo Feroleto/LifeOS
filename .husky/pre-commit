@@ -3,3 +3,16 @@ set -e
 # tsc covers prisma/ and test/, which `nest build` excludes.
 npx tsc --noEmit
 npm test
+
+# The web app is a separate npm project, so its gate only runs when the commit
+# touches it — backend-only commits keep the cost they had before.
+if git diff --cached --name-only | grep -q '^web/'; then
+  if [ ! -d web/node_modules ]; then
+    echo "web/ changed but web/node_modules is missing — run 'npm run web:install'." >&2
+    exit 1
+  fi
+
+  npm run web:typecheck
+  npm run web:lint
+  npm run web:test
+fi

@@ -3,7 +3,8 @@
 Personal Life Operating System. The product and domain definition lives in
 [`life-os-foundation.md`](./life-os-foundation.md).
 
-Current state: **backend V1 — users, areas and goals** on PostgreSQL + Prisma 7.
+Current state: **backend V1** (users, areas, goals, habits, events, metrics, notes) on
+PostgreSQL + Prisma 7, plus a **web V1** in [`web/`](./web) covering areas and goals.
 
 ## Stack
 
@@ -14,6 +15,11 @@ Current state: **backend V1 — users, areas and goals** on PostgreSQL + Prisma 
 | ORM        | Prisma 7 (`prisma-client` + `@prisma/adapter-pg` driver adapter) |
 | Validation | class-validator + global ValidationPipe; environment via zod |
 | Tests      | Jest (unit) + Supertest (e2e against a real Postgres) |
+| Frontend   | React 19 + Vite (SPA in `web/`) |
+| Web state  | TanStack Query (server state) + React Router 7 |
+| Web forms  | react-hook-form + zod mirroring the DTOs |
+| Web UI     | Tailwind 4 + shadcn/ui |
+| Web tests  | Vitest + Testing Library + MSW |
 | Language   | TypeScript               |
 
 ## Setup
@@ -27,6 +33,20 @@ npm run db:generate       # generates the Prisma Client into src/generated/prism
 npm run db:seed           # creates the initial user + the 5 base areas (prints the X-User-Id)
 npm run start:dev         # API on http://localhost:3000/api
 ```
+
+Then, in a second terminal, the web app:
+
+```bash
+npm run web:install       # web/ is a separate npm project with its own node_modules
+npm run web:dev           # http://localhost:5173
+```
+
+Open <http://localhost:5173>, paste the `X-User-Id` that `db:seed` printed, and you are in.
+
+The API enables **no CORS**. The Vite dev server proxies `/api` to
+`http://localhost:3000` instead, so the browser only ever sees one origin — which is also
+how a deployed build would be served. Because of that the web app always calls `/api/...`
+relative to its own origin; an absolute `http://localhost:3000` URL would be blocked.
 
 ## API
 
@@ -133,6 +153,12 @@ Scoping rules already covered by tests:
 | `npm run db:validate` | Validates the schema                               |
 | `npm run db:format`   | Formats the schema                                 |
 | `npm run commit`      | Guided commit (Commitizen)                         |
+| `npm run web:install` | Installs the web app's dependencies                |
+| `npm run web:dev`     | Web app in dev mode (http://localhost:5173)        |
+| `npm run web:build`   | Typechecks and builds the web app to `web/dist`    |
+| `npm run web:typecheck` | `tsc -b` over the web app                        |
+| `npm run web:lint`    | oxlint over the web app                            |
+| `npm run web:test`    | Web unit/component tests (Vitest)                  |
 
 ## Commits
 
@@ -140,11 +166,19 @@ Two Husky hooks guard every commit:
 
 | Hook         | What it runs                        | Why it fails                         |
 | ------------ | ----------------------------------- | ------------------------------------ |
-| `pre-commit` | `npx tsc --noEmit` then `npm test`  | A type error or a failing unit test  |
+| `pre-commit` | `npx tsc --noEmit` then `npm test`, plus the web gate when the commit touches `web/` | A type error or a failing test |
 | `commit-msg` | `commitlint --edit`                 | A message that is not conventional   |
 
 `pre-commit` takes a few seconds — the unit tests need no database. It stops at the
-first failure, so a type error never reaches the test run. Use `git commit --no-verify`
+first failure, so a type error never reaches the test run.
+
+The web gate (`web:typecheck`, `web:lint`, `web:test`) is conditional so that
+backend-only commits cost what they always did. It keys off
+`git diff --cached --name-only`, which reads the **staged** file list while the rest of
+the hook checks the working tree — an inconsistency worth knowing about: staging only
+backend files while `web/` is dirty skips the web gate. It also fails outright, rather
+than skipping, when `web/node_modules` is missing, so a fresh clone cannot pass a gate
+that never ran. Use `git commit --no-verify`
 to skip both hooks when you knowingly need to (a WIP commit on a branch, for instance).
 
 Note that the hooks check the **working tree**, not the staged snapshot: with a partial
@@ -236,9 +270,52 @@ src/
 ├── generated/prisma/      # generated Prisma Client (not versioned)
 └── lib/prisma.ts          # standalone client for scripts (seed)
 test/                      # e2e (Supertest) + helpers
+web/                       # the SPA — separate npm project, see below
 life-os-model.sql          # hand-written reference SQL model
 life-os-foundation.md      # product and domain foundation
 ```
+
+### `web/`
+
+```
+vite.config.ts             # react + tailwind plugins, @ alias, /api proxy, vitest config
+components.json            # shadcn/ui config
+src/
+├── main.tsx               # QueryClientProvider > BrowserRouter > IdentityProvider
+├── App.tsx                # the route table
+├── api/
+│   ├── http.ts            # fetch wrapper: /api base, X-User-Id, query string, 204
+│   ├── api-error.ts       # normalizes the API's three error shapes into ApiError
+│   └── query-keys.ts      # the one place query keys are built
+├── identity/              # the X-User-Id stand-in for auth: storage, context,
+│                          # route guard and the /setup screen
+├── features/
+│   ├── areas/             # types, zod schemas + body mappers, api, queries, screens
+│   └── goals/             # same, plus filters and the area picker
+├── components/
+│   ├── ui/                # generated by shadcn — not edited by hand
+│   └── layout/            # app shell, loading/error/empty states, 404
+├── lib/                   # date conversion, query client, error flattening
+└── test/                  # vitest setup, MSW server, fixtures, renderWithProviders
+```
+
+Organised by feature rather than by layer: each slice mirrors a `src/modules/<name>` on
+the backend, so a drift between a zod schema and its DTO shows up in one directory.
+
+Four things about the web app that are not obvious from the code:
+
+- **Types are hand-written**, not imported from `src/generated/prisma`. That client is
+  gitignored, CommonJS, and wrong for the wire anyway — dates arrive as ISO strings, and
+  `GoalsService` flattens `areas` before responding.
+- **The form schema is not the request body.** Forms model "empty" as `""`, which the
+  DTOs reject (`""` fails `@IsHexColor`), and `forbidNonWhitelisted` turns any extra key
+  into a 400. `toCreateAreaBody` / `toUpdateGoalBody` and friends are that boundary: they
+  drop empty keys on create and send explicit `null` on patch to clear a field.
+- **`areaIds` is a whole-set replacement.** On `PATCH /goals/:id`, omitting the key keeps
+  the current areas, `[]` removes them all, and an array swaps them — so the goal form
+  always sends the complete selection, including the empty one.
+- **Mutating an area invalidates goals too**, because goal responses embed the whole
+  `Area` record.
 
 ## Tests
 
@@ -250,6 +327,12 @@ life-os-foundation.md      # product and domain foundation
   its name.
 
 Prerequisite: `npm run db:up`.
+
+- **Web** (`npm run web:test`): Vitest + Testing Library, with MSW standing in for the
+  API. The handlers are asserted against, not just stubbed — what is risky in this layer
+  is the shape of the outgoing request (the header, the omitted empty query params,
+  `areaIds: []`), which a hand-rolled `fetch` mock could not check. No database, no
+  running API.
 
 ## Using the client
 
@@ -293,4 +376,4 @@ Implications:
    so today a list request returns the user's whole history.
 2. Timeline (events + notes) and goal progress calculation.
 3. Real authentication, replacing `CurrentUserGuard`.
-4. React frontend + dashboard.
+4. Web: the remaining Core screens (habits, notes, timeline) and the dashboard.

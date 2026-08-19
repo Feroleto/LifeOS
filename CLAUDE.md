@@ -12,7 +12,8 @@ introducing any new entity — it defines what belongs in the Core vs. in a futu
 and section 17 lists architectural rules the schema is meant to obey.
 
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
-`goals`, `habits`, `events`, `metrics` and `notes`.
+`goals`, `habits`, `events`, `metrics` and `notes` — plus a web V1 in `web/` covering
+`areas` and `goals`.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -20,6 +21,36 @@ Treat a missing `updatedAt` as the model's way of saying a record is not edited,
 not add one without the user deciding to change that contract.
 
 Neither `/events` nor `/metrics` is paginated yet, which is the main known gap.
+
+## The web app
+
+`web/` is a **separate npm project** (own `package.json`, `node_modules`, TypeScript and
+`tsconfig`), not a workspace. Never add `web/**` to the root `tsconfig.json`: it is
+`commonjs`, has no `jsx` and no `DOM` lib.
+
+The API enables **no CORS**, by decision. The Vite dev server proxies `/api` instead, so
+the client's base URL is always relative — an absolute `http://localhost:3000` breaks it.
+
+Four rules the client encodes, each of which the backend would otherwise punish:
+
+- **Types are hand-written** in `web/src/features/*/*.types.ts`. `src/generated/prisma`
+  is gitignored, CommonJS, and describes the database rather than the wire (dates are
+  ISO strings there; `areas` arrives flattened).
+- **The form schema is not the request body.** `forbidNonWhitelisted` makes any extra key
+  a 400, and `""` fails validators like `@IsHexColor`. The `to*Body` mappers next to each
+  zod schema drop empty keys on create and send explicit `null` on patch to clear a
+  field. Add fields there, not in the components.
+- **`areaIds` replaces the whole set** on `PATCH /goals/:id`: omitted keeps, `[]` clears,
+  an array swaps. The goal form always sends the full selection.
+- **Errors have three shapes** and `PrismaExceptionFilter` puts the Prisma code where the
+  others put the HTTP phrase. `api/api-error.ts` normalizes them; branch on `status`,
+  never on the message text.
+
+Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
+well, because goal responses embed the whole `Area` record.
+
+The web gate in `.husky/pre-commit` only runs when the commit stages something under
+`web/`, so backend-only commits keep their previous cost.
 
 ## Commands
 
@@ -30,6 +61,11 @@ npm run build          # nest build -> dist/
 npm test               # unit tests (no database)
 npm run test:e2e       # e2e against the lifeos_test database
 npx tsc --noEmit       # typecheck (includes prisma/ and test/, which nest build excludes)
+
+npm run web:install    # web/ has its own node_modules
+npm run web:dev        # SPA on http://localhost:5173, proxying /api to the API
+npm run web:typecheck  # tsc -b over web/
+npm run web:test       # Vitest (no database, no running API)
 ```
 
 `tsconfig.build.json` puts `tsBuildInfoFile` **inside `dist/`** on purpose. `nest-cli.json`

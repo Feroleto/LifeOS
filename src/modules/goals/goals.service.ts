@@ -3,9 +3,12 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import type { Area, Goal, Prisma } from "../../generated/prisma/client";
 import { GoalStatus } from "../../generated/prisma/enums";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { toDateRangeFilter } from "../../shared/query/date-range";
 import { CreateGoalDto } from "./dto/create-goal.dto";
 import { FindGoalsQueryDto } from "./dto/find-goals-query.dto";
 import { UpdateGoalDto } from "./dto/update-goal.dto";
+import { toPercentage } from "./goal-progress";
+import type { GoalProgress } from "./goal-progress";
 
 const GOAL_INCLUDE = { areas: { include: { area: true } } } as const;
 
@@ -108,6 +111,54 @@ export class GoalsService {
 
     // GOAL_AREA rows go away through ON DELETE CASCADE.
     await this.prisma.goal.delete({ where: { id } });
+  }
+
+  /**
+   * Progress for one goal. Deliberately not embedded in `findAll`: deriving it
+   * needs an aggregate per goal, scoped to that goal's own date window, so a
+   * list of N goals would mean N extra queries. Callers that only need the
+   * manual number already get `currentValue` on the goal itself.
+   */
+  async findProgress(userId: string, id: string): Promise<GoalProgress> {
+    const goal = await this.findOne(userId, id);
+
+    const currentValue = goal.metricKey
+      ? await this.sumMetric(userId, goal.metricKey, goal.startDate, goal.targetDate)
+      : goal.currentValue;
+
+    return {
+      goalId: goal.id,
+      targetValue: goal.targetValue,
+      currentValue,
+      percentage: toPercentage(goal.targetValue, currentValue),
+      source: goal.metricKey ? "METRIC" : "MANUAL",
+    };
+  }
+
+  /**
+   * Sums a metric series over the goal's period. A sum, not the latest reading:
+   * the foundation's example accumulates (`study_hours = 9.5` toward 15), and a
+   * "current state" metric would need its own aggregation to be chosen.
+   *
+   * An absent bound leaves that side open, and no matching metric reads as 0 —
+   * "nothing recorded yet", which is a real answer, unlike null.
+   */
+  private async sumMetric(
+    userId: string,
+    key: string,
+    from: Date | null,
+    to: Date | null,
+  ): Promise<number> {
+    const { _sum } = await this.prisma.metric.aggregate({
+      _sum: { value: true },
+      where: {
+        userId,
+        key,
+        recordedAt: toDateRangeFilter({ from: from ?? undefined, to: to ?? undefined }),
+      },
+    });
+
+    return _sum.value ?? 0;
   }
 
   /**

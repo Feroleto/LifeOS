@@ -341,10 +341,12 @@ describe("Core (e2e)", () => {
     it("rejects unknown fields and an invalid enum", async () => {
       const userId = await createUser(USER_A);
 
+      // A field the DTO does not declare at all: forbidNonWhitelisted turns it
+      // into a 400 rather than dropping it silently.
       await request(server)
         .post("/api/goals")
         .set("x-user-id", userId)
-        .send({ title: "X", currentValue: 10 })
+        .send({ title: "X", progress: 10 })
         .expect(400);
 
       await request(server)

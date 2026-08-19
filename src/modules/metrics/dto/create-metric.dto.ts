@@ -11,18 +11,17 @@ import {
 } from "class-validator";
 
 import { MetricSource } from "../../../generated/prisma/enums";
+import {
+  METRIC_KEY_MAX_LENGTH,
+  METRIC_KEY_MESSAGE,
+  METRIC_KEY_PATTERN,
+} from "../../../shared/domain/metric-key";
 
 export class CreateMetricDto {
-  /**
-   * snake_case, like sleep_hours — the convention the foundation uses for core
-   * metrics. `key` is the grouping dimension for every series, so a metric
-   * recorded as `sleepHours` would silently become a second series.
-   */
+  /** snake_case, like sleep_hours — see METRIC_KEY_PATTERN for why. */
   @IsString()
-  @Matches(/^[a-z][a-z0-9_]*$/, {
-    message: "key must be snake_case, e.g. sleep_hours",
-  })
-  @MaxLength(60)
+  @Matches(METRIC_KEY_PATTERN, { message: `key ${METRIC_KEY_MESSAGE}` })
+  @MaxLength(METRIC_KEY_MAX_LENGTH)
   key: string;
 
   @IsNumber()

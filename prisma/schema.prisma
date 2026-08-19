@@ -96,8 +96,14 @@ model Goal {
     targetDate      DateTime?   @db.Timestamptz(0)
 
     targetValue     Float?
+    /// Manually tracked progress. Ignored when metricKey is set, which derives it.
+    currentValue    Float?
     unit            String?
     period          GoalPeriod?
+
+    /// Optional METRIC.key the progress is summed from, per foundation section 8.
+    /// A plain scalar, not a polymorphic progress definition, which V1 excludes.
+    metricKey       String?
 
     createdAt       DateTime    @default(now()) @db.Timestamptz(0)
     updatedAt       DateTime    @updatedAt @db.Timestamptz(0)

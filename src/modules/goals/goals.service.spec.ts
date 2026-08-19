@@ -28,6 +28,8 @@ function createPrismaMock() {
     },
     area: { findMany: jest.fn() },
     goalArea: { deleteMany: jest.fn(), createMany: jest.fn() },
+    // Progress derived from a metricKey aggregates over METRIC.
+    metric: { aggregate: jest.fn() },
     $transaction: jest.fn(),
   };
 }
@@ -188,6 +190,102 @@ describe("GoalsService", () => {
       );
 
       expect(prisma.goal.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("findProgress", () => {
+    it("uses the stored value when the goal tracks progress by hand", async () => {
+      prisma.goal.findFirst.mockResolvedValue({
+        ...goalRecord,
+        targetValue: 15,
+        currentValue: 9.5,
+        metricKey: null,
+        startDate: null,
+        targetDate: null,
+      });
+
+      await expect(service.findProgress(USER_ID, GOAL_ID)).resolves.toEqual({
+        goalId: GOAL_ID,
+        targetValue: 15,
+        currentValue: 9.5,
+        percentage: 63.3,
+        source: "MANUAL",
+      });
+
+      expect(prisma.metric.aggregate).not.toHaveBeenCalled();
+    });
+
+    it("sums the metric series over the goal's own window", async () => {
+      const startDate = new Date("2026-08-01T00:00:00.000Z");
+      const targetDate = new Date("2026-08-31T00:00:00.000Z");
+
+      prisma.goal.findFirst.mockResolvedValue({
+        ...goalRecord,
+        targetValue: 15,
+        // Stored value is stale once a key derives it; it must be ignored.
+        currentValue: 999,
+        metricKey: "study_hours",
+        startDate,
+        targetDate,
+      });
+      prisma.metric.aggregate.mockResolvedValue({ _sum: { value: 9.5 } });
+
+      const progress = await service.findProgress(USER_ID, GOAL_ID);
+
+      expect(progress).toMatchObject({ currentValue: 9.5, percentage: 63.3, source: "METRIC" });
+      expect(prisma.metric.aggregate).toHaveBeenCalledWith({
+        _sum: { value: true },
+        where: {
+          userId: USER_ID,
+          key: "study_hours",
+          recordedAt: { gte: startDate, lte: targetDate },
+        },
+      });
+    });
+
+    it("reads an empty series as 0 recorded, not as unknown", async () => {
+      prisma.goal.findFirst.mockResolvedValue({
+        ...goalRecord,
+        targetValue: 15,
+        currentValue: null,
+        metricKey: "study_hours",
+        startDate: null,
+        targetDate: null,
+      });
+      prisma.metric.aggregate.mockResolvedValue({ _sum: { value: null } });
+
+      const progress = await service.findProgress(USER_ID, GOAL_ID);
+
+      expect(progress).toMatchObject({ currentValue: 0, percentage: 0 });
+      // Both bounds absent leaves the range off entirely.
+      expect(prisma.metric.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ recordedAt: undefined }),
+        }),
+      );
+    });
+
+    it("has no percentage for a qualitative goal", async () => {
+      prisma.goal.findFirst.mockResolvedValue({
+        ...goalRecord,
+        targetValue: null,
+        currentValue: 3,
+        metricKey: null,
+        startDate: null,
+        targetDate: null,
+      });
+
+      await expect(service.findProgress(USER_ID, GOAL_ID)).resolves.toMatchObject({
+        percentage: null,
+      });
+    });
+
+    it("does not answer for another user's goal", async () => {
+      prisma.goal.findFirst.mockResolvedValue(null);
+
+      await expect(service.findProgress(USER_ID, GOAL_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

@@ -2,10 +2,15 @@ import { http } from "@/api/http";
 import type { LifeEvent } from "@/features/events/event.types";
 import { listAllEvents } from "@/features/events/events.api";
 import { HABIT_COMPLETED } from "./habit-completions";
+import type { CreateHabitBody } from "./habit.schemas";
 import type { Habit, HabitStatus, HabitSummary } from "./habit.types";
 
 export function listHabits(status?: HabitStatus): Promise<Habit[]> {
   return http.get<Habit[]>("/habits", { status });
+}
+
+export function createHabit(body: CreateHabitBody): Promise<Habit> {
+  return http.post<Habit>("/habits", body);
 }
 
 export function getHabitSummary(id: string): Promise<HabitSummary> {

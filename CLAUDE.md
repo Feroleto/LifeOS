@@ -14,9 +14,9 @@ and section 17 lists architectural rules the schema is meant to obey.
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
 `goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
 `web/` with screens for `areas`, `goals` and `habits`, plus a dashboard. `events`,
-`metrics` and `notes` have no screen of their own yet. Habits are **tracked** but not
-authored: the habits screen completes and un-completes them, while creating one is still
-an API call, because the design has no form for it.
+`metrics` and `notes` have no screen of their own yet, so a metric can only be recorded
+through the API. A habit can be created, completed and un-completed from the web app, but
+not yet edited or archived from it.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -85,6 +85,14 @@ Four rules the client encodes, each of which the backend would otherwise punish:
   a 400, and `""` fails validators like `@IsHexColor`. The `to*Body` mappers next to each
   zod schema drop empty keys on create and send explicit `null` on patch to clear a
   field. Add fields there, not in the components.
+- **A date field needs the mapper its column asks for.** A goal's dates are
+  `Timestamptz`, so `dateInputToIso` anchors them at *local* midnight and the day the user
+  typed survives the round trip. A habit's are `@db.Date`, where Postgres keeps only the
+  date part of the UTC instant: local midnight is already the previous day in UTC for any
+  user east of it, so those go through `dateInputToUtcDate`, at **midday UTC**. Reading
+  back mirrors it — `utcDateToDateInput`, never `isoToDateInput`. Getting this backwards
+  shifts a date by one day for half the world and for nobody in São Paulo, so it does not
+  show up locally.
 - **`areaIds` replaces the whole set** on `PATCH /goals/:id`: omitted keeps, `[]` clears,
   an array swaps. The goal form always sends the full selection.
 - **Errors have three shapes** and `PrismaExceptionFilter` puts the Prisma code where the

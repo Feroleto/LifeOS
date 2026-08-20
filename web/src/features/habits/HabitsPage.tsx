@@ -1,6 +1,12 @@
+import { useState } from "react";
+import { Plus } from "lucide-react";
+
 import { EmptyState, ErrorState, LoadingState } from "@/components/layout/states";
+import { Button } from "@/components/ui/button";
 import { useMe } from "@/identity/user.queries";
+import { todayInputValue } from "@/lib/date";
 import { HabitCalendar } from "./HabitCalendar";
+import { HabitFormDialog } from "./HabitFormDialog";
 import { HabitConsistencyCard } from "./HabitConsistencyCard";
 import { HabitStreaksCard } from "./HabitStreaksCard";
 import { HabitTracker } from "./HabitTracker";
@@ -53,6 +59,8 @@ export function HabitsPage() {
   const complete = useCompleteHabit();
   const uncomplete = useUncompleteHabit();
 
+  const [formOpen, setFormOpen] = useState(false);
+
   const grouped = groupCompletions(completions.data ?? [], habitIds, timeZone);
   const progress = summarizeProgress(list, summaries.byHabitId);
   const streaks = topStreaks(list, summaries.byHabitId, TOP_STREAKS);
@@ -66,11 +74,20 @@ export function HabitsPage() {
 
   return (
     <section className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-[44px] leading-none">Habits</h1>
-        <p className="text-muted-foreground text-sm">
-          Track your daily rituals and the consistency behind them.
-        </p>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-heading text-[44px] leading-none">Habits</h1>
+          <p className="text-muted-foreground text-sm">
+            Track your daily rituals and the consistency behind them.
+          </p>
+        </div>
+
+        <Button
+          className="h-10 rounded-xl px-4 text-[13px] font-semibold"
+          onClick={() => setFormOpen(true)}
+        >
+          <Plus /> New habit
+        </Button>
       </header>
 
       {habits.isPending ? (
@@ -80,8 +97,12 @@ export function HabitsPage() {
       ) : list.length === 0 ? (
         <EmptyState
           title="No active habits"
-          description="Habits are created through the API for now — this screen tracks the ones that exist."
-        />
+          description="Add the first ritual you want to keep."
+        >
+          <Button size="sm" onClick={() => setFormOpen(true)}>
+            New habit
+          </Button>
+        </EmptyState>
       ) : (
         <>
           <div className="grid gap-5 md:grid-cols-2">
@@ -132,6 +153,12 @@ export function HabitsPage() {
           )}
         </>
       )}
+
+      <HabitFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        today={todayInputValue(timeZone, now)}
+      />
     </section>
   );
 }

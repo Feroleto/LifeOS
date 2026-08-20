@@ -3,7 +3,14 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { queryKeys } from "@/api/query-keys";
 import { deleteEvent } from "@/features/events/events.api";
 import type { HabitStatus, HabitSummary } from "./habit.types";
-import { completeHabit, getHabitSummary, listHabitCompletions, listHabits } from "./habits.api";
+import type { CreateHabitBody } from "./habit.schemas";
+import {
+  completeHabit,
+  createHabit,
+  getHabitSummary,
+  listHabitCompletions,
+  listHabits,
+} from "./habits.api";
 
 /**
  * Ticking a square changes two derived reads at once: the completion log the
@@ -57,6 +64,12 @@ export function useHabitCompletions(from: string) {
     queryKey: queryKeys.habits.completions(from),
     queryFn: () => listHabitCompletions(from),
   });
+}
+
+export function useCreateHabit() {
+  const invalidate = useInvalidateHabits();
+
+  return useMutation({ mutationFn: (body: CreateHabitBody) => createHabit(body), onSuccess: invalidate });
 }
 
 /**

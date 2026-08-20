@@ -277,6 +277,13 @@ Migrate does **not** regenerate the client on its own here.
 `npm run db:reset` is destructive and Prisma blocks it for AI agents — ask the user to
 run it themselves rather than trying to bypass the guard.
 
+`npm run db:seed` fills every area with habits, their completions and a metric series, so
+the dashboard and the area pages have something to draw. It is **idempotent by skipping**:
+areas upsert, while habits and metric series are checked for existence first, since
+`HABIT` has no unique key on `(userId, name)` and `METRIC` has no natural one at all. The
+consequence is that it never *updates* what it already seeded — changing the sample data
+means dropping those records first.
+
 ## Commits
 
 Two Husky hooks run on `git commit`. `pre-commit` runs `npx tsc --noEmit` then `npm test`

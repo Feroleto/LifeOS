@@ -1,4 +1,5 @@
 import type { LifeEvent } from "@/features/events/event.types";
+import { pad, shiftDayKey } from "@/lib/date";
 
 /**
  * A habit completion is an `EVENT`, not a row in a habits table: the API writes
@@ -38,29 +39,6 @@ export function toDayKey(instant: string | Date, timeZone: string): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(instant));
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-/** Calendar arithmetic runs on a UTC date, which has no offset to shift. */
-function toUtc(dayKey: string): Date {
-  const [year, month, day] = dayKey.split("-").map(Number);
-
-  return new Date(Date.UTC(year!, month! - 1, day!));
-}
-
-function toKey(date: Date): string {
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
-}
-
-export function shiftDayKey(dayKey: string, days: number): string {
-  const date = toUtc(dayKey);
-
-  date.setUTCDate(date.getUTCDate() + days);
-
-  return toKey(date);
 }
 
 /**

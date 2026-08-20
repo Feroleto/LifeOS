@@ -13,7 +13,7 @@ export const queryKeys = {
   },
   habits: {
     all: ["habits"] as const,
-    list: (status?: string) => ["habits", "list", status ?? null] as const,
+    list: (filters: { status?: string; areaId?: string }) => ["habits", "list", filters] as const,
     summary: (id: string) => ["habits", "summary", id] as const,
     /*
       Completions are events, so this reads GET /events rather than anything
@@ -22,5 +22,9 @@ export const queryKeys = {
       summaries, which one `habits.all` prefix does.
     */
     completions: (from: string) => ["habits", "completions", from] as const,
+  },
+  metrics: {
+    all: ["metrics"] as const,
+    list: (query: Record<string, string | undefined>) => ["metrics", "list", query] as const,
   },
 } as const;

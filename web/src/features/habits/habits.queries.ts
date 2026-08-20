@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 
 import { queryKeys } from "@/api/query-keys";
 import { deleteEvent } from "@/features/events/events.api";
-import type { HabitStatus, HabitSummary } from "./habit.types";
+import type { HabitFilters, HabitStatus, HabitSummary } from "./habit.types";
 import type { CreateHabitBody, UpdateHabitBody } from "./habit.schemas";
 import {
   completeHabit,
@@ -27,8 +27,11 @@ function useInvalidateHabits() {
   };
 }
 
-export function useHabits(status?: HabitStatus) {
-  return useQuery({ queryKey: queryKeys.habits.list(status), queryFn: () => listHabits(status) });
+export function useHabits(filters: HabitFilters = {}) {
+  return useQuery({
+    queryKey: queryKeys.habits.list(filters),
+    queryFn: () => listHabits(filters),
+  });
 }
 
 /**

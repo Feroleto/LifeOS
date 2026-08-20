@@ -1,18 +1,7 @@
 import { http } from "@/api/http";
-import type { LifeEvent, Paginated } from "./event.types";
-
-/** `MAX_PAGE_SIZE` on the API — a larger `limit` fails validation with a 400. */
-const MAX_PAGE_SIZE = 100;
-
-/**
- * How many pages a sweep will follow before giving up.
- *
- * The window is what is meant to bound the answer; this only stops a wide one
- * from turning into an unbounded run of requests. A caller that hits the cap gets
- * the most recent completions and misses the oldest, since the API orders by
- * `occurredAt` descending.
- */
-const MAX_PAGES = 5;
+import { fetchAllPages } from "@/api/paged";
+import type { Paginated } from "@/api/paged";
+import type { LifeEvent } from "./event.types";
 
 export type EventQuery = {
   type?: string;
@@ -33,27 +22,9 @@ export function listEvents(
   });
 }
 
-/**
- * Every event matching the query, following the pages the first answer reports.
- *
- * `/events` is paginated because the collection is unbounded, but a caller
- * asking for a bounded window — a week, a month — wants the whole window and
- * cannot show a partial one. `meta.pages` is read from the first response, so
- * the common case of a single page costs exactly one request.
- */
-export async function listAllEvents(query: EventQuery): Promise<LifeEvent[]> {
-  const first = await listEvents(query, 1, MAX_PAGE_SIZE);
-  const pages = Math.min(first.meta.pages, MAX_PAGES);
-
-  if (pages <= 1) {
-    return first.data;
-  }
-
-  const rest = await Promise.all(
-    Array.from({ length: pages - 1 }, (_, index) => listEvents(query, index + 2, MAX_PAGE_SIZE)),
-  );
-
-  return [first.data, ...rest.map((response) => response.data)].flat();
+/** Every event matching the query — see `fetchAllPages` for what bounds it. */
+export function listAllEvents(query: EventQuery): Promise<LifeEvent[]> {
+  return fetchAllPages((page, limit) => listEvents(query, page, limit));
 }
 
 export function deleteEvent(id: string): Promise<void> {

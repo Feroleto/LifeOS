@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LifeEvent } from "@/features/events/event.types";
+import { shiftDayKey } from "@/lib/date";
 import {
   HABIT_COMPLETED,
   completionHabitId,
@@ -11,7 +12,6 @@ import {
   groupCompletions,
   lastDayKeys,
   monthGrid,
-  shiftDayKey,
   toDayKey,
 } from "./habit-completions";
 

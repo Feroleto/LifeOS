@@ -4,6 +4,8 @@ export type HabitFrequency = (typeof HABIT_FREQUENCY)[number];
 export const HABIT_STATUS = ["ACTIVE", "PAUSED", "ARCHIVED"] as const;
 export type HabitStatus = (typeof HABIT_STATUS)[number];
 
+export type HabitFilters = { status?: HabitStatus; areaId?: string };
+
 export type Habit = {
   id: string;
   userId: string;
@@ -17,6 +19,7 @@ export type Habit = {
   startDate: string;
   endDate: string | null;
   status: HabitStatus;
+  areaId: string | null;
   createdAt: string;
   updatedAt: string;
 };

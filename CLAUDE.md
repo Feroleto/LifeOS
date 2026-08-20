@@ -110,10 +110,11 @@ light-only and the app ships no theme toggle, so it is dormant rather than desig
 Three things the design implies that the code has to earn:
 
 - **The sidebar is driven by `GET /areas`** in its middle — the design's navigation is a
-  list of life areas, so each of those items filters `/goals` by one area. `NavLink`'s own
-  `isActive` ignores the query string, so the area items compare it themselves. Habits sit
-  below them as a Core concept rather than among them, because `Habit` has no relation to
-  `Area` and the item is a screen, not a filter.
+  list of life areas, so each of those items opens `/areas/:areaId`. `NavLink`'s own
+  `isActive` would do, except the board is still reachable as `/goals?areaId=`, which
+  belongs to the same item and which `isActive` ignores; the comparison covers both.
+  Habits sit below them as a Core concept rather than among them, because `Habit` names
+  no area of its own and the item is a screen, not a filter.
 - **The dashboard shows only what the API sustains.** The design's cards promise task
   checkboxes and a balance; the Core has no Task and no finance module, so those widgets are
   deliberately absent, not pending. Each area card summarizes one `Area` from `GET /areas`
@@ -197,11 +198,32 @@ overwrite whatever another tab changed. `UpdateHabitDto` is a `PartialType`, so 
 `status` is a valid request — and, for the same reason, the form's own patch has to send
 explicit `null`s to clear a field.
 
+**The area page is one screen for every area**, built from the Figma `saude` frame as a
+layout and filled with whatever the Core actually holds for that area — habits, measured
+series, goals. It reads the `Area` out of the cached `GET /areas` the sidebar already
+loaded rather than spending a `GET /areas/:id`, and sets `--area` / `--area-tint` once on
+its root so every card below inherits the accent through the same static classes.
+
+Its measurements come from a **90-day sweep** of `GET /metrics?areaId=&from=`, grouped into
+series by `key` in `metric-series.ts` — there is no endpoint answering "which series does
+this area have", because `key` is a free string the API keeps no registry of. Every
+aggregate on that card therefore describes the window and says so: `average` is the mean of
+the readings that were fetched, not of all history. The **latest** reading is the headline,
+since a series like body weight is a current state whose ninety-day mean means nothing.
+
+`fetchAllPages` in `api/paged.ts` is the shared sweep behind both that and the habit
+tracker: page 1 reports `meta.pages`, so a single page costs one request, and a cap stops a
+wide window from becoming an unbounded run.
+
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.
 
 The web gate in `.husky/pre-commit` only runs when the commit stages something under
 `web/`, so backend-only commits keep their previous cost.
+
+The Figma's per-area frames (`saude`, `estudos`, `hobbies`) are **layout references, not
+data specs** — one generic area page serves all of them, and a card exists only where the
+Core has something to put in it.
 
 Some of the designed screens are **not** implemented, and not for want of time.
 

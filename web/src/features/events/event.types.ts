@@ -1,16 +1,3 @@
-/** The envelope the unbounded collections answer with, instead of a bare array. */
-export type PageMeta = {
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-};
-
-export type Paginated<T> = {
-  data: T[];
-  meta: PageMeta;
-};
-
 export const EVENT_SOURCE = ["CORE", "SOTREINA"] as const;
 export type EventSource = (typeof EVENT_SOURCE)[number];
 

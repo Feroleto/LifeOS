@@ -33,7 +33,7 @@ export function DashboardPage() {
   // counts, and habits are a tile of their own.
   const progress = useGoalProgress(progressGoalIds(summaries));
 
-  const habits = useHabits("ACTIVE");
+  const habits = useHabits({ status: "ACTIVE" });
   const habitSummaries = useHabitSummaries((habits.data ?? []).map((habit) => habit.id));
   const habitsOverview = summarizeHabits(habits.data ?? [], habitSummaries.byHabitId);
   const showHabits = habitsOverview.total > 0;

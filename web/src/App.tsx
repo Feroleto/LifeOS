@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { NotFound } from "@/components/layout/NotFound";
+import { AreaPage } from "@/features/areas/AreaPage";
 import { AreasPage } from "@/features/areas/AreasPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { GoalsPage } from "@/features/goals/GoalsPage";
@@ -20,6 +21,7 @@ export function App() {
           <Route path="goals" element={<GoalsPage />} />
           <Route path="habits" element={<HabitsPage />} />
           <Route path="areas" element={<AreasPage />} />
+          <Route path="areas/:areaId" element={<AreaPage />} />
         </Route>
       </Route>
 

@@ -43,9 +43,12 @@ export function Sidebar() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
 
-  // NavLink's own isActive ignores the query string, and every area link points
-  // at the same /goals path, so the filter has to be part of the comparison.
-  const activeAreaId = pathname === "/goals" ? searchParams.get("areaId") : null;
+  // Each area now has a page of its own, so NavLink's own isActive would do —
+  // except the goals board is still reachable filtered by an area, and that
+  // view belongs to the same item. The query string is what says so, and
+  // isActive ignores it.
+  const activeAreaId =
+    pathname === "/goals" ? searchParams.get("areaId") : pathname.replace("/areas/", "");
 
   return (
     <aside className="bg-sidebar border-sidebar-border hidden w-[260px] shrink-0 flex-col justify-between border-r p-8 md:flex">
@@ -62,12 +65,12 @@ export function Sidebar() {
 
           {/*
             The design's navigation is a list of life areas rather than of Core
-            concepts, so each item filters the goals list by one area.
+            concepts, so each item opens that area's own page.
           */}
           {(areas.data ?? []).map((area) => (
             <NavItem
               key={area.id}
-              to={`/goals?areaId=${area.id}`}
+              to={`/areas/${area.id}`}
               icon={areaIcon(area.icon)}
               label={area.name}
               isActive={activeAreaId === area.id}

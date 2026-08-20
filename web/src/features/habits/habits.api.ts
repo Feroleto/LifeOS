@@ -3,10 +3,10 @@ import type { LifeEvent } from "@/features/events/event.types";
 import { listAllEvents } from "@/features/events/events.api";
 import { HABIT_COMPLETED } from "./habit-completions";
 import type { CreateHabitBody, UpdateHabitBody } from "./habit.schemas";
-import type { Habit, HabitStatus, HabitSummary } from "./habit.types";
+import type { Habit, HabitFilters, HabitStatus, HabitSummary } from "./habit.types";
 
-export function listHabits(status?: HabitStatus): Promise<Habit[]> {
-  return http.get<Habit[]>("/habits", { status });
+export function listHabits(filters: HabitFilters = {}): Promise<Habit[]> {
+  return http.get<Habit[]>("/habits", filters);
 }
 
 export function createHabit(body: CreateHabitBody): Promise<Habit> {

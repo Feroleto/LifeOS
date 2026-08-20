@@ -5,6 +5,7 @@ import type { LifeEvent } from "@/features/events/event.types";
 import type { Goal, GoalProgress } from "@/features/goals/goal.types";
 import { HABIT_COMPLETED } from "@/features/habits/habit-completions";
 import type { Habit, HabitSummary } from "@/features/habits/habit.types";
+import type { Metric } from "@/features/metrics/metric.types";
 import type { User } from "@/identity/user.types";
 
 export const USER_ID = "29967d6a-f3c1-4d8d-9b52-f1c79a3bd228";
@@ -58,7 +59,15 @@ export const areasHandler = (areas: Area[]) =>
   msw.get("/api/areas", () => HttpResponse.json(areas));
 
 export const goalsHandler = (goals: Goal[]) =>
-  msw.get("/api/goals", () => HttpResponse.json(goals));
+  msw.get("/api/goals", ({ request }) => {
+    const areaId = new URL(request.url).searchParams.get("areaId");
+
+    return HttpResponse.json(
+      areaId === null
+        ? goals
+        : goals.filter((goal) => goal.areas.some((area) => area.id === areaId)),
+    );
+  });
 
 export function makeHabit(overrides: Partial<Habit> & Pick<Habit, "id" | "name">): Habit {
   return {
@@ -71,6 +80,7 @@ export function makeHabit(overrides: Partial<Habit> & Pick<Habit, "id" | "name">
     startDate: "2026-01-01",
     endDate: null,
     status: "ACTIVE",
+    areaId: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -93,7 +103,19 @@ export function makeHabitSummary(
 }
 
 export const habitsHandler = (habits: Habit[]) =>
-  msw.get("/api/habits", () => HttpResponse.json(habits));
+  msw.get("/api/habits", ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const areaId = params.get("areaId");
+    const status = params.get("status");
+
+    return HttpResponse.json(
+      habits.filter(
+        (habit) =>
+          (areaId === null || habit.areaId === areaId) &&
+          (status === null || habit.status === status),
+      ),
+    );
+  });
 
 /** Serves GET /habits/:id/summary, 404-ing an id the test did not prepare. */
 export const habitSummaryHandler = (summaries: HabitSummary[]) =>
@@ -162,3 +184,29 @@ export const completeHabitHandler = () =>
 
 export const deleteEventHandler = () =>
   msw.delete("/api/events/:id", () => new HttpResponse(null, { status: 204 }));
+
+export function makeMetric(
+  overrides: Partial<Metric> & Pick<Metric, "id" | "key" | "value" | "recordedAt">,
+): Metric {
+  return {
+    userId: USER_ID,
+    unit: null,
+    createdAt: overrides.recordedAt,
+    source: "CORE",
+    metadata: {},
+    areaId: null,
+    ...overrides,
+  };
+}
+
+/** Serves GET /metrics, honouring the areaId filter the area page sends. */
+export const metricsHandler = (metrics: Metric[]) =>
+  msw.get("/api/metrics", ({ request }) => {
+    const areaId = new URL(request.url).searchParams.get("areaId");
+    const data = areaId === null ? metrics : metrics.filter((m) => m.areaId === areaId);
+
+    return HttpResponse.json({
+      data,
+      meta: { total: data.length, page: 1, limit: 100, pages: 1 },
+    });
+  });

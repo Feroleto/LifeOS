@@ -73,3 +73,24 @@ export function todayInputValue(timeZone: string, now: Date): string {
     day: "2-digit",
   }).format(now);
 }
+
+/** Zero-pads a calendar part, so day keys stay fixed-width and sortable. */
+export function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/**
+ * Moves a "YYYY-MM-DD" key by whole days.
+ *
+ * The arithmetic runs on a UTC date, which has no offset to shift: doing it
+ * locally would land on the wrong day across a DST boundary, where a local
+ * "same time tomorrow" is 23 or 25 hours away.
+ */
+export function shiftDayKey(dayKey: string, days: number): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day!));
+
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}

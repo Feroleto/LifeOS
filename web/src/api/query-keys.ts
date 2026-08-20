@@ -15,5 +15,12 @@ export const queryKeys = {
     all: ["habits"] as const,
     list: (status?: string) => ["habits", "list", status ?? null] as const,
     summary: (id: string) => ["habits", "summary", id] as const,
+    /*
+      Completions are events, so this reads GET /events rather than anything
+      under /habits. It is keyed here anyway: it is the habits page that asks
+      for it, and completing a habit has to invalidate it alongside the
+      summaries, which one `habits.all` prefix does.
+    */
+    completions: (from: string) => ["habits", "completions", from] as const,
   },
 } as const;

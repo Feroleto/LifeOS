@@ -1,7 +1,9 @@
 import { HttpResponse, http as msw } from "msw";
 
 import type { Area } from "@/features/areas/area.types";
+import type { LifeEvent } from "@/features/events/event.types";
 import type { Goal, GoalProgress } from "@/features/goals/goal.types";
+import { HABIT_COMPLETED } from "@/features/habits/habit-completions";
 import type { Habit, HabitSummary } from "@/features/habits/habit.types";
 import type { User } from "@/identity/user.types";
 
@@ -112,3 +114,51 @@ export const goalProgressHandler = (entries: GoalProgress[]) =>
       ? HttpResponse.json(progress)
       : HttpResponse.json({ message: "Goal not found" }, { status: 404 });
   });
+
+export function makeCompletion(
+  overrides: Pick<LifeEvent, "id" | "occurredAt"> & { habitId: string },
+): LifeEvent {
+  const { habitId, ...event } = overrides;
+
+  return {
+    userId: USER_ID,
+    type: HABIT_COMPLETED,
+    source: "CORE",
+    createdAt: event.occurredAt,
+    metadata: { habitId },
+    ...event,
+  };
+}
+
+/**
+ * Serves GET /events, which is where the habit tracker reads its completions
+ * from. One page: the tests never hand it more rows than the API's own limit.
+ */
+export const eventsHandler = (events: LifeEvent[]) =>
+  msw.get("/api/events", ({ request }) => {
+    const type = new URL(request.url).searchParams.get("type");
+    const data = type === null ? events : events.filter((event) => event.type === type);
+
+    return HttpResponse.json({
+      data,
+      meta: { total: data.length, page: 1, limit: 100, pages: 1 },
+    });
+  });
+
+/** Serves POST /habits/:id/completions, echoing the event the API would write. */
+export const completeHabitHandler = () =>
+  msw.post("/api/habits/:id/completions", async ({ params, request }) => {
+    const body = (await request.json()) as { occurredAt?: string };
+
+    return HttpResponse.json(
+      makeCompletion({
+        id: `completion-${String(params["id"])}`,
+        habitId: String(params["id"]),
+        occurredAt: body.occurredAt ?? NOW,
+      }),
+      { status: 201 },
+    );
+  });
+
+export const deleteEventHandler = () =>
+  msw.delete("/api/events/:id", () => new HttpResponse(null, { status: 204 }));

@@ -13,9 +13,10 @@ and section 17 lists architectural rules the schema is meant to obey.
 
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
 `goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
-`web/` with screens for `areas` and `goals` and a dashboard that also reads habits.
-`habits`, `events`, `metrics` and `notes` have no screen of their own yet, so a habit can
-only be created and completed through the API.
+`web/` with screens for `areas`, `goals` and `habits`, plus a dashboard. `events`,
+`metrics` and `notes` have no screen of their own yet. Habits are **tracked** but not
+authored: the habits screen completes and un-completes them, while creating one is still
+an API call, because the design has no form for it.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -90,8 +91,9 @@ Four rules the client encodes, each of which the backend would otherwise punish:
   others put the HTTP phrase. `api/api-error.ts` normalizes them; branch on `status`,
   never on the message text.
 
-The visual identity comes from a Figma file (`M9gCdQiSAujkjbKt9PbSZd`, frame `3:10`), which
-defines no Figma Variables — so `web/src/index.css` *is* the token layer, holding hex copied
+The visual identity comes from a Figma file (`M9gCdQiSAujkjbKt9PbSZd`), whose frames are the
+dashboard (`3:10`), `metas`, `habitos` and one per life area, and which defines no Figma
+Variables — so `web/src/index.css` *is* the token layer, holding hex copied
 from that file under shadcn's own variable names. Keeping those names is what lets Goals and
 Areas inherit the theme without touching their components; change values there, not classes
 in components. The `.dark` block is left at the shadcn defaults on purpose: the design is
@@ -99,9 +101,11 @@ light-only and the app ships no theme toggle, so it is dormant rather than desig
 
 Three things the design implies that the code has to earn:
 
-- **The sidebar is driven by `GET /areas`**, not by Core concepts — the design's navigation
-  is a list of life areas, so each item filters `/goals` by one area. `NavLink`'s own
-  `isActive` ignores the query string, so the area items compare it themselves.
+- **The sidebar is driven by `GET /areas`** in its middle — the design's navigation is a
+  list of life areas, so each of those items filters `/goals` by one area. `NavLink`'s own
+  `isActive` ignores the query string, so the area items compare it themselves. Habits sit
+  below them as a Core concept rather than among them, because `Habit` has no relation to
+  `Area` and the item is a screen, not a filter.
 - **The dashboard shows only what the API sustains.** The design's cards promise task
   checkboxes and a balance; the Core has no Task and no finance module, so those widgets are
   deliberately absent, not pending. Each area card summarizes one `Area` from `GET /areas`
@@ -145,11 +149,41 @@ kept apart from `useUpdateGoal`. That is not tidiness: the form's `UpdateGoalBod
 carries `areaIds`, and reusing it here would replace the goal's areas as a side effect of
 pausing it.
 
+**Habits is drawn from the event log, in one request.** A completion is an `EVENT`, so
+the tracker does not ask `GET /habits/:id/completions` once per row: it sweeps
+`GET /events?type=HABIT_COMPLETED&from=…` and groups the answer by `metadata.habitId`
+(`habit-completions.ts`). That collection is paginated, so `listAllEvents` follows
+`meta.pages` — capped, with the *window* rather than the cap meant to bound the answer.
+The sweep returns completions of paused and even deleted habits, which is why grouping
+takes the habit ids it is allowed to keep.
+
+The window is the current month plus the tracker's last seven days when those reach back
+into the previous one, and it is sent a day wider than it is drawn: `occurredAt` filters
+instants while the grid is calendar days, and no zone offset is wider than a day.
+
+**Every day on that screen is a day in the user's `timezone`**, never the browser's —
+`toDayKey` is the client half of `habit-streak.ts`, and both exist because a completion
+logged at 22:00 in São Paulo is already tomorrow in UTC. The same reasoning runs the other
+way when writing: `dayKeyToInstant` picks **midday in the user's zone**, so backdating from
+a laptop in another zone still lands on the square that was clicked.
+
+A square means "completed at least once", not "fulfilled": `frequencyTarget` may ask for
+more than one a day and a weekly habit's period is not a day at all — the tile above
+reports fulfilment, from `GET /habits/:id/summary`. Since nothing enforces one completion
+per day, clearing a square deletes **every** event on it, or the square would stay ticked.
+
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.
 
 The web gate in `.husky/pre-commit` only runs when the commit stages something under
 `web/`, so backend-only commits keep their previous cost.
+
+Two of the designed screens are **not** implemented, and not for want of time. `financas`
+wants transactions with an amount, a category and a sign; `trabalho` wants a task board and
+meetings with a start, an end and a location. The Core has no `Transaction` and no `Task`,
+and `EVENT` has neither an end nor a place — `life-os-foundation.md` puts all of that in a
+future module. Approximating them with `METRIC` or `NOTE` would put the module's shape in
+the client instead, so those two wait on the decision to build the modules.
 
 ## Commands
 

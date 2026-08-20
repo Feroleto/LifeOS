@@ -1,20 +1,11 @@
 import type { CSSProperties } from "react";
 import { FlameKindling } from "lucide-react";
 
-import type { HabitFrequency } from "@/features/habits/habit.types";
+import { PERIOD_NOUN, pluralize } from "@/features/habits/habit-overview";
 import type { HabitsOverview } from "./dashboard.selectors";
 
-/** What one period of this habit is called, so a streak reads as a duration. */
-const PERIOD_NOUN: Record<HabitFrequency, string> = {
-  DAILY: "day",
-  WEEKLY: "week",
-  MONTHLY: "month",
-};
-
 function streakLabel({ name, streak, frequency }: NonNullable<HabitsOverview["bestStreak"]>) {
-  const noun = PERIOD_NOUN[frequency];
-
-  return `${name} — ${streak} ${noun}${streak === 1 ? "" : "s"} running`;
+  return `${name} — ${pluralize(streak, PERIOD_NOUN[frequency])} running`;
 }
 
 /**

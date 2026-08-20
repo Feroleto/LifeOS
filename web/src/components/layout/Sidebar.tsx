@@ -1,4 +1,4 @@
-import { House, Leaf, Settings2 } from "lucide-react";
+import { CircleCheck, House, Leaf, Settings2 } from "lucide-react";
 import { NavLink, useLocation, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,17 @@ export function Sidebar() {
               isActive={activeAreaId === area.id}
             />
           ))}
+
+          {/*
+            Habits sit below the areas rather than among them: `Habit` has no
+            relation to `Area`, so the item is a Core concept, not a filter.
+          */}
+          <NavItem
+            to="/habits"
+            icon={CircleCheck}
+            label="Habits"
+            isActive={pathname === "/habits"}
+          />
 
           <NavItem
             to="/areas"

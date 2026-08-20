@@ -203,12 +203,20 @@ well, because goal responses embed the whole `Area` record.
 The web gate in `.husky/pre-commit` only runs when the commit stages something under
 `web/`, so backend-only commits keep their previous cost.
 
-Two of the designed screens are **not** implemented, and not for want of time. `financas`
-wants transactions with an amount, a category and a sign; `trabalho` wants a task board and
-meetings with a start, an end and a location. The Core has no `Transaction` and no `Task`,
-and `EVENT` has neither an end nor a place — `life-os-foundation.md` puts all of that in a
-future module. Approximating them with `METRIC` or `NOTE` would put the module's shape in
-the client instead, so those two wait on the decision to build the modules.
+Some of the designed screens are **not** implemented, and not for want of time.
+
+`financas` wants transactions with an amount, a category and a sign; `trabalho` wants a
+task board and meetings with a start, an end and a location. The Core has no `Transaction`
+and no `Task`, and `EVENT` has neither an end nor a place — `life-os-foundation.md` puts
+all of that in a future module. Approximating them with `METRIC` or `NOTE` would put the
+module's shape in the client instead, so those two wait on the decision to build the
+modules.
+
+The `relacionamentos` frame is **dropped**, by the user's decision on 2026-08-20: the
+screen is not wanted, whatever the design file still shows. It is not pending and not
+blocked — do not build it from the Figma frame. Relationships remaining a life *area* is a
+different thing: an area is a row in `AREA` that the sidebar and the goal filters pick up
+on their own, and needs no screen of its own.
 
 ## Commands
 

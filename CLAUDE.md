@@ -102,16 +102,18 @@ Three things the design implies that the code has to earn:
 - **The sidebar is driven by `GET /areas`**, not by Core concepts — the design's navigation
   is a list of life areas, so each item filters `/goals` by one area. `NavLink`'s own
   `isActive` ignores the query string, so the area items compare it themselves.
-- **The dashboard shows only what the API sustains.** The design's cards promise habit
-  streaks, task checkboxes, a balance and a course percentage; the Core has no habit
-  completion log, no Task, no `Goal.currentValue` and no finance module. Those widgets are
-  deliberately absent, not pending. Each card summarizes one `Area` from `GET /areas` plus
-  `GET /goals` — two requests, no dashboard endpoint, and habits stay out because `Habit`
-  has no relation to `Area`.
+- **The dashboard shows only what the API sustains.** The design's cards promise task
+  checkboxes and a balance; the Core has no Task and no finance module, so those widgets are
+  deliberately absent, not pending. Each area card summarizes one `Area` from `GET /areas`
+  plus `GET /goals`, and habits get a tile of their own rather than a place in those cards,
+  because `Habit` has no relation to `Area`.
 - **`Area.color` is darkened before it is used as text.** Stored colors are mid tones picked
   through a color input (`#22c55e`, `#eab308`) while the design's accents are dark enough to
-  read on white, so `AreaBentoCard` mixes toward black in oklab and derives the light chip
-  tint the same way. One column, two colors, no second field.
+  read on white, so `areaColorVars` (`features/areas/area-color.ts`) mixes toward black in
+  oklab and derives the light chip tint the same way. One column, two colors, no second
+  field. It hands both over as the `--area` / `--area-tint` custom properties, which is what
+  lets the bento card, the goal card, its area tags and the filter chips share one set of
+  classes; a goal in no area resolves them to the neutral tokens instead.
 
 The dashboard reads two derived endpoints the API deliberately keeps off its list
 responses, so each costs one request per record and the fan-out is narrowed before it is
@@ -122,6 +124,26 @@ next in both. `GET /habits/:id/summary` is asked only for `ACTIVE` habits. Both 
 `useQueries` with `combine`, and both drop a failed request instead of raising it: one goal
 must not blank the card it shares. Widening either selection is what turns the page into
 dozens of requests.
+
+**Goals is a board, and the columns are the status filter.** Every status is a column, so
+the page asks `GET /goals` for the whole list and never sends `status` — only `areaId`,
+which stays in the URL because the sidebar links into it. `showCancelled` is local state,
+not a request: the cancelled goals are already in the response, and the header's total
+keeps counting them while their column is hidden. Column order lives in
+`goal-board.ts` (`STATUS_ORDER`) rather than in `GOAL_STATUS`, which lists `COMPLETED`
+second.
+
+The board draws a bar for every goal with a target, which would be one derived read per
+card if it asked. It does not: `goal-progress.ts` reruns the API's own `toPercentage` over
+the `currentValue` the list already carries, and spends a `GET /goals/:id/progress` only on
+the **metric-fed** goals — the ones where `metricKey` makes the stored `currentValue` a lie
+and the real number is a sum over `METRIC` rows. `GoalsService.findProgress` says as much
+in its own comment. Dropping that condition is what turns the board into N requests.
+
+Quick actions (complete, pause, resume) go through `setGoalStatus`, a status-only `PATCH`
+kept apart from `useUpdateGoal`. That is not tidiness: the form's `UpdateGoalBody` always
+carries `areaIds`, and reusing it here would replace the goal's areas as a side effect of
+pausing it.
 
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.

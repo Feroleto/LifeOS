@@ -19,6 +19,8 @@ export const goalFormSchema = z
     /** UI-only: a goal can be qualitative, with no number attached to it. */
     hasNumericTarget: z.boolean(),
     targetValue: z.string(),
+    /** Manual progress. Blank is legitimate: nothing recorded yet. */
+    currentValue: z.string(),
     unit: z.string().trim().max(40, "At most 40 characters"),
     period: z.union([z.enum(GOAL_PERIOD), z.literal("")]),
     areaIds: z.array(z.uuidv4()),
@@ -31,6 +33,18 @@ export const goalFormSchema = z
         ctx.addIssue({ code: "custom", path: ["targetValue"], message: "Enter a number" });
       } else if (parsed < 0) {
         ctx.addIssue({ code: "custom", path: ["targetValue"], message: "Must be 0 or more" });
+      }
+
+      // Unlike the target, an empty current value is fine — it means the goal
+      // has not moved yet, which the API stores as an absent `currentValue`.
+      if (values.currentValue.trim() !== "") {
+        const current = Number(values.currentValue);
+
+        if (Number.isNaN(current)) {
+          ctx.addIssue({ code: "custom", path: ["currentValue"], message: "Enter a number" });
+        } else if (current < 0) {
+          ctx.addIssue({ code: "custom", path: ["currentValue"], message: "Must be 0 or more" });
+        }
       }
     }
 
@@ -47,6 +61,7 @@ export type CreateGoalBody = {
   startDate?: string;
   targetDate?: string;
   targetValue?: number;
+  currentValue?: number;
   unit?: string;
   period?: GoalPeriod;
   areaIds?: string[];
@@ -59,6 +74,7 @@ export type UpdateGoalBody = {
   startDate: string | null;
   targetDate: string | null;
   targetValue: number | null;
+  currentValue: number | null;
   unit: string | null;
   period: GoalPeriod | null;
   areaIds: string[];
@@ -73,6 +89,7 @@ export function goalFormDefaults(goal?: Goal): GoalFormValues {
     targetDate: isoToDateInput(goal?.targetDate),
     hasNumericTarget: goal?.targetValue != null,
     targetValue: goal?.targetValue != null ? String(goal.targetValue) : "",
+    currentValue: goal?.currentValue != null ? String(goal.currentValue) : "",
     unit: goal?.unit ?? "",
     period: goal?.period ?? "",
     areaIds: goal?.areas.map((area) => area.id) ?? [],
@@ -91,6 +108,7 @@ export function toCreateGoalBody(values: GoalFormValues): CreateGoalBody {
 
   if (values.hasNumericTarget) {
     body.targetValue = Number(values.targetValue);
+    if (values.currentValue.trim()) body.currentValue = Number(values.currentValue);
     if (unit) body.unit = unit;
     if (values.period) body.period = values.period;
   }
@@ -121,6 +139,8 @@ export function toUpdateGoalBody(values: GoalFormValues): UpdateGoalBody {
     startDate: values.startDate ? dateInputToIso(values.startDate) : null,
     targetDate: values.targetDate ? dateInputToIso(values.targetDate) : null,
     targetValue: values.hasNumericTarget ? Number(values.targetValue) : null,
+    currentValue:
+      values.hasNumericTarget && values.currentValue.trim() ? Number(values.currentValue) : null,
     unit: values.hasNumericTarget && values.unit.trim() ? values.unit.trim() : null,
     period: values.hasNumericTarget && values.period ? values.period : null,
     areaIds: values.areaIds,

@@ -1,7 +1,7 @@
-import type { CSSProperties } from "react";
 import { Target } from "lucide-react";
 import { Link } from "react-router";
 
+import { areaColorVars } from "@/features/areas/area-color";
 import { AreaIcon } from "@/features/areas/area-icon";
 import type { GoalProgress } from "@/features/goals/goal.types";
 import { formatDate } from "@/lib/date";
@@ -12,28 +12,6 @@ import type { AreaSummary } from "./dashboard.selectors";
  * falls back to a single proportional fill.
  */
 const SEGMENT_LIMIT = 12;
-
-/**
- * The design pairs a dark accent with a light tint per area, but the API stores
- * a single `Area.color`, picked freely through a color input. Both are mixed
- * from it in CSS rather than adding a second column, and travel as custom
- * properties so the card's own classes stay static.
- *
- * The accent is darkened rather than used raw: stored colors are typically mid
- * tones (#22c55e, #eab308) that fail as small text on white, while the design's
- * accents are dark (#2b5e3c, #7e5b18). Mixing toward black in oklab keeps the
- * hue and lands in that same family.
- */
-function accent(color: string | null): CSSProperties {
-  if (color === null) {
-    return { "--area": "var(--muted-foreground)", "--area-tint": "var(--muted)" } as CSSProperties;
-  }
-
-  return {
-    "--area": `color-mix(in oklab, ${color} 62%, black)`,
-    "--area-tint": `color-mix(in oklab, ${color} 12%, white)`,
-  } as CSSProperties;
-}
 
 function headline({ total, active }: AreaSummary): string {
   if (total === 0) {
@@ -111,7 +89,7 @@ export function AreaBentoCard({
   return (
     <Link
       to={area ? `/goals?areaId=${area.id}` : "/goals"}
-      style={accent(area?.color ?? null)}
+      style={areaColorVars(area?.color)}
       className="rounded-bento border-border bg-card shadow-bento hover:border-[var(--area)] flex h-full min-h-[240px] flex-col justify-between border p-6 transition-colors"
     >
       <div className="flex flex-col gap-1">

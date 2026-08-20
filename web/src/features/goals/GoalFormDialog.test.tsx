@@ -33,8 +33,8 @@ describe("GoalFormDialog", () => {
 
     renderWithProviders(<GoalFormDialog open onOpenChange={() => {}} goal={goal} />);
 
-    await user.click(await screen.findByLabelText("Health"));
-    await user.click(screen.getByLabelText("Studies"));
+    await user.click(await screen.findByRole("button", { name: "Health" }));
+    await user.click(screen.getByRole("button", { name: "Studies" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     // Omitting the key would keep the current areas; only an explicit []
@@ -61,5 +61,73 @@ describe("GoalFormDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create goal" }));
 
     await expect.poll(() => body).toEqual({ title: "Read more" });
+  });
+
+  it("sends the current value alongside the target, and clears it when blanked", async () => {
+    const goal = makeGoal({
+      id: "406f3367-a339-4aa8-a763-7b5164ef2a3e",
+      title: "Read 12 books",
+      targetValue: 12,
+      currentValue: 7,
+    });
+
+    let body: unknown = null;
+
+    server.use(
+      areasHandler([]),
+      msw.patch("/api/goals/:id", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(goal);
+      }),
+    );
+
+    const user = userEvent.setup();
+
+    renderWithProviders(<GoalFormDialog open onOpenChange={() => {}} goal={goal} />);
+
+    const currentValue = await screen.findByLabelText("Current value");
+
+    expect(currentValue).toHaveValue("7");
+    // The preview runs the API's own formula on what is typed, not on what is
+    // saved, so the bar answers before the request is made.
+    expect(screen.getByText("58.3%")).toBeInTheDocument();
+
+    await user.clear(currentValue);
+    await user.type(currentValue, "9");
+
+    expect(screen.getByText("75%")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await expect.poll(() => body).toMatchObject({ targetValue: 12, currentValue: 9 });
+  });
+
+  it("clears the current value with an explicit null rather than omitting it", async () => {
+    const goal = makeGoal({
+      id: "406f3367-a339-4aa8-a763-7b5164ef2a3e",
+      title: "Read 12 books",
+      targetValue: 12,
+      currentValue: 7,
+    });
+
+    let body: unknown = null;
+
+    server.use(
+      areasHandler([]),
+      msw.patch("/api/goals/:id", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(goal);
+      }),
+    );
+
+    const user = userEvent.setup();
+
+    renderWithProviders(<GoalFormDialog open onOpenChange={() => {}} goal={goal} />);
+
+    await user.clear(await screen.findByLabelText("Current value"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    // Omitting the key would keep the stored 7; only null resets the progress.
+    await expect.poll(() => body).toMatchObject({ currentValue: null });
   });
 });

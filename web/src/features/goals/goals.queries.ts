@@ -2,8 +2,15 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 
 import { queryKeys } from "@/api/query-keys";
 import type { CreateGoalBody, UpdateGoalBody } from "./goal.schemas";
-import type { GoalFilters, GoalProgress } from "./goal.types";
-import { createGoal, deleteGoal, getGoalProgress, listGoals, updateGoal } from "./goals.api";
+import type { GoalFilters, GoalProgress, GoalStatus } from "./goal.types";
+import {
+  createGoal,
+  deleteGoal,
+  getGoalProgress,
+  listGoals,
+  setGoalStatus,
+  updateGoal,
+} from "./goals.api";
 
 function useInvalidateGoals() {
   const queryClient = useQueryClient();
@@ -52,6 +59,21 @@ export function useUpdateGoal() {
 
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateGoalBody }) => updateGoal(id, body),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Completing, pausing or resuming a goal from the board. Separate from
+ * `useUpdateGoal` so the narrow body stays narrow: the form's own type demands
+ * every field, and reusing it here would send an areas replacement nobody asked
+ * for. `variables` lets the card that is moving disable its own actions.
+ */
+export function useSetGoalStatus() {
+  const invalidate = useInvalidateGoals();
+
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: GoalStatus }) => setGoalStatus(id, status),
     onSuccess: invalidate,
   });
 }

@@ -1,75 +1,65 @@
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ChipButton, ChipDot } from "@/components/chip-button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { areaColorVars } from "@/features/areas/area-color";
 import { useAreas } from "@/features/areas/areas.queries";
-import { GOAL_STATUS } from "./goal.types";
-import type { GoalFilters as GoalFiltersValue, GoalStatus } from "./goal.types";
 
 /**
- * "All" has to drop the key entirely rather than send an empty one: the query
- * DTO runs under forbidNonWhitelisted, so `?status=` is a 400.
+ * The status half of the old filter is gone: the board's columns are the status
+ * view, so the only server-side filter left is the area — which is also what the
+ * sidebar links to. Cancelled is a client-side toggle, not a request: the goals
+ * are already in hand, and hiding a column must not change what "in total" counts.
  */
-const ALL = "__all__";
-
 export function GoalFilters({
-  value,
-  onChange,
+  areaId,
+  onAreaChange,
+  showCancelled,
+  onShowCancelledChange,
+  cancelledCount,
 }: {
-  value: GoalFiltersValue;
-  onChange: (filters: GoalFiltersValue) => void;
+  areaId: string | undefined;
+  onAreaChange: (areaId: string | undefined) => void;
+  showCancelled: boolean;
+  onShowCancelledChange: (showCancelled: boolean) => void;
+  cancelledCount: number;
 }) {
   const areas = useAreas();
 
   return (
-    <div className="flex flex-wrap items-end gap-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-status">Status</Label>
-        <Select
-          value={value.status ?? ALL}
-          onValueChange={(next) =>
-            onChange({ ...value, status: next === ALL ? undefined : (next as GoalStatus) })
-          }
-        >
-          <SelectTrigger id="filter-status" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            {GOAL_STATUS.map((status) => (
-              <SelectItem key={status} value={status}>
-                {status}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <ChipButton
+        variant="solid"
+        selected={areaId === undefined}
+        onClick={() => onAreaChange(undefined)}
+      >
+        <span aria-hidden className="text-subtle size-2 shrink-0 rounded-full bg-current" />
+        All areas
+      </ChipButton>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-area">Area</Label>
-        <Select
-          value={value.areaId ?? ALL}
-          onValueChange={(next) =>
-            onChange({ ...value, areaId: next === ALL ? undefined : next })
-          }
-        >
-          <SelectTrigger id="filter-area" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All areas</SelectItem>
-            {(areas.data ?? []).map((area) => (
-              <SelectItem key={area.id} value={area.id}>
-                {area.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {areas.isPending ? (
+        <Skeleton className="h-[34px] w-64 rounded-xl" />
+      ) : (
+        (areas.data ?? []).map((area) => (
+          <ChipButton
+            key={area.id}
+            style={areaColorVars(area.color)}
+            selected={areaId === area.id}
+            onClick={() => onAreaChange(area.id)}
+          >
+            <ChipDot />
+            {area.name}
+          </ChipButton>
+        ))
+      )}
+
+      <span aria-hidden className="bg-border mx-1 h-5 w-px" />
+
+      <ChipButton
+        variant="muted"
+        selected={showCancelled}
+        onClick={() => onShowCancelledChange(!showCancelled)}
+      >
+        {showCancelled ? "Hide cancelled" : `Show cancelled (${cancelledCount})`}
+      </ChipButton>
     </div>
   );
 }

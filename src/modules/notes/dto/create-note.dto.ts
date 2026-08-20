@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class CreateNoteDto {
   @IsOptional()
@@ -9,4 +9,9 @@ export class CreateNoteDto {
   @IsString()
   @MinLength(1)
   content: string;
+
+  /** Which part of life this belongs to. Checked for ownership in the service. */
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }

@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsDate, IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsDate, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 
 import { MetricSource } from "../../../generated/prisma/enums";
 import { PaginationQueryDto } from "../../../shared/query/pagination";
@@ -13,6 +13,10 @@ export class FindMetricsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(MetricSource)
   source?: MetricSource;
+
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 
   /** Inclusive lower bound on recordedAt. */
   @IsOptional()

@@ -319,10 +319,29 @@ by e2e tests:
 
 - Another user's record returns **404, never 403** — services use
   `findFirst({ where: { id, userId } })` so existence never leaks.
-- Relation ids coming from the client must be checked for ownership in the service
-  (see `GoalsService.assertAreasBelongToUser`). Foreign keys do not help: the constraint
-  does not know who owns the row, so a user could otherwise link their goal to someone
-  else's area.
+- Relation ids coming from the client must be checked for ownership in the service.
+  `shared/domain/area-ownership.ts` is that check for areas, used by all four modules
+  that accept one. Foreign keys do not help: the constraint does not know who owns the
+  row, so a user could otherwise file their record under someone else's area. It answers
+  **400, not 404** — the id is an input, not the resource being addressed — and the
+  message is identical for someone else's real area and for an id matching nothing, so
+  existence still does not leak.
+
+**Areas are a label on four entities, in two different shapes.** `Goal` joins them N-N
+through `GOAL_AREA`, because a goal genuinely spans areas. `Habit`, `Metric` and `Note`
+each carry one optional `areaId` instead — foundation section 10 spells out why, and Rule
+4 is what keeps the join table out until something asks for it. `Event` has none on
+purpose: it takes its area from whatever its `metadata` refers to.
+
+All three foreign keys are **`ON DELETE SET NULL`**, never cascade. Deleting an area drops
+a label, not the habits and measurements it was labelling — and in `METRIC` that null is
+the single write an otherwise append-only table accepts, which is foreign-key upkeep
+rather than an edit of what was measured. `GOAL_AREA` still cascades, because there the
+cascade removes a join row and leaves the goal.
+
+`GET /habits`, `GET /metrics` and `GET /notes` all take `?areaId=`, which is what an
+area-scoped screen reads. `null` clears the field on a `PATCH` and skips the ownership
+check; only a real id is verified.
 
 **Errors.** Services throw Nest exceptions for domain cases; `PrismaExceptionFilter`
 translates known Prisma codes globally (P2002 → 409, P2025 → 404, P2003 → 400). Do not

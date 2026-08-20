@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional } from "class-validator";
+import { IsEnum, IsOptional, IsUUID } from "class-validator";
 
 import { HabitFrequency, HabitStatus } from "../../../generated/prisma/enums";
 
@@ -10,4 +10,8 @@ export class FindHabitsQueryDto {
   @IsOptional()
   @IsEnum(HabitFrequency)
   frequency?: HabitFrequency;
+
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }

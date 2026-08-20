@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -60,4 +61,9 @@ export class CreateHabitDto {
   @IsOptional()
   @IsEnum(HabitStatus)
   status?: HabitStatus;
+
+  /** Which part of life this belongs to. Checked for ownership in the service. */
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 
 import type { Area, Goal, Prisma } from "../../generated/prisma/client";
 import { GoalStatus } from "../../generated/prisma/enums";
+import { assertAreasBelongToUser } from "../../shared/domain/area-ownership";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { toDateRangeFilter } from "../../shared/query/date-range";
 import { CreateGoalDto } from "./dto/create-goal.dto";
@@ -161,27 +162,8 @@ export class GoalsService {
     return _sum.value ?? 0;
   }
 
-  /**
-   * Without this check a user could link their goal to someone else's area — the
-   * foreign key would accept it, because the constraint does not know the owner.
-   */
-  private async assertAreasBelongToUser(userId: string, areaIds: string[]): Promise<void> {
-    if (areaIds.length === 0) {
-      return;
-    }
-
-    const found = await this.prisma.area.findMany({
-      where: { id: { in: areaIds }, userId },
-      select: { id: true },
-    });
-
-    if (found.length === areaIds.length) {
-      return;
-    }
-
-    const owned = new Set(found.map((area) => area.id));
-    const invalid = areaIds.filter((areaId) => !owned.has(areaId));
-
-    throw new BadRequestException(`Unknown area(s): ${invalid.join(", ")}`);
+  /** Shared with habits, metrics and notes — see `area-ownership.ts`. */
+  private assertAreasBelongToUser(userId: string, areaIds: string[]): Promise<void> {
+    return assertAreasBelongToUser(this.prisma, userId, areaIds);
   }
 }

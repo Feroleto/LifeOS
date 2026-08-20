@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 
 import type { Metric, Prisma } from "../../generated/prisma/client";
 import { MetricSource } from "../../generated/prisma/enums";
+import { assertAreaBelongsToUser } from "../../shared/domain/area-ownership";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { toDateRangeFilter } from "../../shared/query/date-range";
 import { resolvePagination, toPage } from "../../shared/query/pagination";
@@ -18,8 +19,10 @@ import { FindMetricsQueryDto } from "./dto/find-metrics-query.dto";
 export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(userId: string, dto: CreateMetricDto): Promise<Metric> {
+  async create(userId: string, dto: CreateMetricDto): Promise<Metric> {
     const { metadata, source, ...data } = dto;
+
+    await assertAreaBelongsToUser(this.prisma, userId, dto.areaId);
 
     return this.prisma.metric.create({
       data: {
@@ -42,6 +45,10 @@ export class MetricsService {
 
     if (query.source) {
       where.source = query.source;
+    }
+
+    if (query.areaId) {
+      where.areaId = query.areaId;
     }
 
     where.recordedAt = toDateRangeFilter(query);

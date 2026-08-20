@@ -551,5 +551,143 @@ describe("Habits, events, metrics and notes (e2e)", () => {
       expect(await prisma.metric.count()).toBe(0);
       expect(await prisma.note.count()).toBe(0);
     });
+
+    it("keeps the records when their area goes away, clearing the link", async () => {
+      const userId = await createUser(USER_A);
+
+      const area = await request(server)
+        .post("/api/areas")
+        .set("x-user-id", userId)
+        .send({ name: "Health" })
+        .expect(201);
+
+      const areaId = area.body.id as string;
+
+      await request(server)
+        .post("/api/habits")
+        .set("x-user-id", userId)
+        .send({
+          name: "Train",
+          frequency: "WEEKLY",
+          frequencyTarget: 4,
+          startDate: "2026-01-01",
+          areaId,
+        })
+        .expect(201);
+
+      await request(server)
+        .post("/api/metrics")
+        .set("x-user-id", userId)
+        .send({ key: "mood", value: 4, recordedAt: "2026-01-10T09:00:00.000Z", areaId })
+        .expect(201);
+
+      await request(server)
+        .post("/api/notes")
+        .set("x-user-id", userId)
+        .send({ content: "Anything", areaId })
+        .expect(201);
+
+      await request(server)
+        .delete(`/api/areas/${areaId}`)
+        .set("x-user-id", userId)
+        .expect(204);
+
+      // ON DELETE SET NULL, not CASCADE: an area is a label on these records,
+      // and dropping the label must not drop what it was pointing at.
+      expect(await prisma.habit.count()).toBe(1);
+      expect(await prisma.metric.count()).toBe(1);
+      expect(await prisma.note.count()).toBe(1);
+
+      expect((await prisma.habit.findFirstOrThrow()).areaId).toBeNull();
+      expect((await prisma.metric.findFirstOrThrow()).areaId).toBeNull();
+      expect((await prisma.note.findFirstOrThrow()).areaId).toBeNull();
+    });
+  });
+
+  describe("area ownership", () => {
+    it("refuses to file a record under another user's area", async () => {
+      const userA = await createUser(USER_A);
+      const userB = await createUser(USER_B);
+
+      const area = await request(server)
+        .post("/api/areas")
+        .set("x-user-id", userA)
+        .send({ name: "Health" })
+        .expect(201);
+
+      const areaId = area.body.id as string;
+
+      // 400 rather than 404: the id is an input here, not the resource being
+      // addressed. The foreign key alone would have accepted this.
+      await request(server)
+        .post("/api/habits")
+        .set("x-user-id", userB)
+        .send({
+          name: "Train",
+          frequency: "WEEKLY",
+          frequencyTarget: 4,
+          startDate: "2026-01-01",
+          areaId,
+        })
+        .expect(400);
+
+      await request(server)
+        .post("/api/metrics")
+        .set("x-user-id", userB)
+        .send({ key: "mood", value: 4, recordedAt: "2026-01-10T09:00:00.000Z", areaId })
+        .expect(400);
+
+      await request(server)
+        .post("/api/notes")
+        .set("x-user-id", userB)
+        .send({ content: "Anything", areaId })
+        .expect(400);
+
+      expect(await prisma.habit.count()).toBe(0);
+      expect(await prisma.metric.count()).toBe(0);
+      expect(await prisma.note.count()).toBe(0);
+    });
+
+    it("filters each collection by area", async () => {
+      const userId = await createUser(USER_A);
+
+      const area = await request(server)
+        .post("/api/areas")
+        .set("x-user-id", userId)
+        .send({ name: "Health" })
+        .expect(201);
+
+      const areaId = area.body.id as string;
+
+      await request(server)
+        .post("/api/habits")
+        .set("x-user-id", userId)
+        .send({
+          name: "Train",
+          frequency: "WEEKLY",
+          frequencyTarget: 4,
+          startDate: "2026-01-01",
+          areaId,
+        })
+        .expect(201);
+
+      await request(server)
+        .post("/api/habits")
+        .set("x-user-id", userId)
+        .send({ name: "Read", frequency: "DAILY", frequencyTarget: 1, startDate: "2026-01-01" })
+        .expect(201);
+
+      const scoped = await request(server)
+        .get(`/api/habits?areaId=${areaId}`)
+        .set("x-user-id", userId)
+        .expect(200);
+
+      expect(scoped.body).toHaveLength(1);
+      expect(scoped.body[0].name).toBe("Train");
+
+      const all = await request(server).get("/api/habits").set("x-user-id", userId).expect(200);
+
+      expect(all.body).toHaveLength(2);
+    });
   });
 });

@@ -5,6 +5,7 @@ import { HabitsService } from "./habits.service";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const HABIT_ID = "44444444-4444-4444-8444-444444444444";
+const AREA_ID = "55555555-5555-4555-8555-555555555555";
 
 const START = new Date("2026-01-01T00:00:00.000Z");
 const END = new Date("2026-06-30T00:00:00.000Z");
@@ -31,6 +32,8 @@ function createPrismaMock() {
     },
     // A completion is an Event, so the habit module writes into that table.
     event: { create: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+    // Only read to prove an areaId belongs to the user.
+    area: { findMany: jest.fn() },
     user: { findUniqueOrThrow: jest.fn() },
     $transaction: jest.fn(),
   };
@@ -263,6 +266,48 @@ describe("HabitsService", () => {
           }),
         }),
       );
+    });
+  });
+
+  describe("areas", () => {
+    it("refuses an area the user does not own", async () => {
+      // The foreign key would accept it: it does not know who owns the row.
+      prisma.area.findMany.mockResolvedValue([]);
+
+      await expect(service.create(USER_ID, { ...baseDto, areaId: AREA_ID })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.habit.create).not.toHaveBeenCalled();
+    });
+
+    it("stores an area the user does own", async () => {
+      prisma.area.findMany.mockResolvedValue([{ id: AREA_ID }]);
+      prisma.habit.create.mockResolvedValue(habitRecord);
+
+      await service.create(USER_ID, { ...baseDto, areaId: AREA_ID });
+
+      expect(prisma.habit.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ areaId: AREA_ID }) }),
+      );
+    });
+
+    it("filters the list by area", async () => {
+      prisma.habit.findMany.mockResolvedValue([]);
+
+      await service.findAll(USER_ID, { areaId: AREA_ID });
+
+      expect(prisma.habit.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: USER_ID, areaId: AREA_ID } }),
+      );
+    });
+
+    it("clears the area without checking ownership of null", async () => {
+      prisma.habit.findFirst.mockResolvedValue(habitRecord);
+      prisma.habit.update.mockResolvedValue(habitRecord);
+
+      await service.update(USER_ID, HABIT_ID, { areaId: null } as never);
+
+      expect(prisma.area.findMany).not.toHaveBeenCalled();
     });
   });
 });

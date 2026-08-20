@@ -1,10 +1,11 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 
 import type { PrismaService } from "../../shared/prisma/prisma.service";
 import { NotesService } from "./notes.service";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const NOTE_ID = "77777777-7777-4777-8777-777777777777";
+const AREA_ID = "55555555-5555-4555-8555-555555555555";
 
 const noteRecord = {
   id: NOTE_ID,
@@ -15,6 +16,8 @@ const noteRecord = {
 
 function createPrismaMock() {
   return {
+    // Only read to prove an areaId belongs to the user.
+    area: { findMany: jest.fn() },
     note: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -109,6 +112,36 @@ describe("NotesService", () => {
       );
 
       expect(prisma.note.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("areas", () => {
+    it("refuses an area the user does not own", async () => {
+      prisma.area.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.create(USER_ID, { content: "Anything", areaId: AREA_ID }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.note.create).not.toHaveBeenCalled();
+    });
+
+    it("filters the list by area", async () => {
+      prisma.note.findMany.mockResolvedValue([]);
+
+      await service.findAll(USER_ID, { areaId: AREA_ID });
+
+      expect(prisma.note.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: USER_ID, areaId: AREA_ID } }),
+      );
+    });
+
+    it("clears the area without checking ownership of null", async () => {
+      prisma.note.findFirst.mockResolvedValue(noteRecord);
+      prisma.note.update.mockResolvedValue(noteRecord);
+
+      await service.update(USER_ID, NOTE_ID, { areaId: null } as never);
+
+      expect(prisma.area.findMany).not.toHaveBeenCalled();
     });
   });
 });

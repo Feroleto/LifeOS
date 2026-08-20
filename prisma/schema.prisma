@@ -80,6 +80,9 @@ model Area {
 
     user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
     goals   GoalArea[]
+    habits  Habit[]
+    metrics Metric[]
+    notes   Note[]
 
     @@unique([userId, name], map: "area_name_unique")
     @@map("AREA")
@@ -140,11 +143,17 @@ model Habit {
     endDate             DateTime?       @db.Date
     
     status              HabitStatus
-    
+
+    /// Which part of life this belongs to. Optional: a habit needs no area, and
+    /// deleting one must not delete the habit — hence SetNull, not Cascade.
+    areaId              String?         @db.Uuid
+
     createdAt           DateTime        @default(now()) @db.Timestamptz(0)
     updatedAt           DateTime        @updatedAt @db.Timestamptz(0)
 
     user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    area    Area?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+    @@index([userId, areaId], map: "habit_userId_areaId")
     @@map("HABIT")
 }
 
@@ -176,9 +185,16 @@ model Metric {
 
     source      MetricSource
     metadata    Json        @db.JsonB
-    
+
+    /// See HABIT.areaId. Clearing it on area deletion is the one write this
+    /// otherwise append-only table accepts, and it is foreign-key upkeep rather
+    /// than an edit of what was recorded.
+    areaId      String?     @db.Uuid
+
     user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    area    Area?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
     @@index([userId, key, recordedAt], map: "metric_userId_key_recordedAt")
+    @@index([userId, areaId], map: "metric_userId_areaId")
     @@map("METRIC")
 }
 
@@ -188,9 +204,14 @@ model Note {
     title       String?
     content     String
 
+    /// See HABIT.areaId.
+    areaId      String?     @db.Uuid
+
     createdAt   DateTime    @default(now()) @db.Timestamptz(0)
     updatedAt   DateTime    @updatedAt @db.Timestamptz(0)
 
     user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    area    Area?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+    @@index([userId, areaId], map: "note_userId_areaId")
     @@map("NOTE")
 }

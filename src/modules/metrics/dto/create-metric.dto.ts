@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
 } from "class-validator";
@@ -44,4 +45,9 @@ export class CreateMetricDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  /** Which part of life this belongs to. Checked for ownership in the service. */
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }

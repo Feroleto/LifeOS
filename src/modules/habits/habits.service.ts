@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 
 import type { Event, Habit, Prisma } from "../../generated/prisma/client";
 import { EventSource, HabitFrequency, HabitStatus } from "../../generated/prisma/enums";
+import { assertAreaBelongsToUser } from "../../shared/domain/area-ownership";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { toDateRangeFilter } from "../../shared/query/date-range";
 import { resolvePagination, toPage } from "../../shared/query/pagination";
@@ -47,6 +48,7 @@ export class HabitsService {
   // synchronously out of a method whose signature says it returns one.
   async create(userId: string, dto: CreateHabitDto): Promise<Habit> {
     assertPeriodIsOrdered(dto.startDate, dto.endDate);
+    await assertAreaBelongsToUser(this.prisma, userId, dto.areaId);
 
     return this.prisma.habit.create({
       data: { ...dto, userId, status: dto.status ?? HabitStatus.ACTIVE },
@@ -62,6 +64,10 @@ export class HabitsService {
 
     if (query.frequency) {
       where.frequency = query.frequency;
+    }
+
+    if (query.areaId) {
+      where.areaId = query.areaId;
     }
 
     return this.prisma.habit.findMany({ where, orderBy: { createdAt: "desc" } });
@@ -86,6 +92,9 @@ export class HabitsService {
       dto.startDate ?? current.startDate,
       dto.endDate === undefined ? current.endDate : dto.endDate,
     );
+
+    // `null` clears the area and needs no check; only a real id does.
+    await assertAreaBelongsToUser(this.prisma, userId, dto.areaId);
 
     return this.prisma.habit.update({ where: { id }, data: dto });
   }

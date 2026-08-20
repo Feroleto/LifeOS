@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http as msw } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -150,12 +151,127 @@ describe("HabitsPage", () => {
     );
   });
 
-  it("says habits live behind the API when there are none", async () => {
+  it("offers the form when there are no habits at all", async () => {
     signIn();
     server.use(meHandler(), habitsHandler([]), habitSummaryHandler([]), eventsHandler([]));
 
     renderWithProviders(<HabitsPage />);
 
-    expect(await screen.findByText("No active habits")).toBeInTheDocument();
+    expect(await screen.findByText("No habits yet")).toBeInTheDocument();
+  });
+
+  it("keeps a paused habit in the tracker but out of the counts", async () => {
+    signIn();
+    server.use(
+      meHandler(),
+      habitsHandler([
+        makeHabit({ id: READ, name: "Read 30 minutes" }),
+        makeHabit({ id: RUN, name: "Run", status: "PAUSED" }),
+      ]),
+      // Only the active habit is summarized, so only it can be "on track".
+      habitSummaryHandler([makeHabitSummary({ habitId: READ, isFulfilled: true })]),
+      eventsHandler([]),
+    );
+
+    renderWithProviders(<HabitsPage />);
+
+    expect(await screen.findByText("1/1 habits on track")).toBeInTheDocument();
+    expect(screen.getByText("Run")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+  });
+
+  it("archives a habit with a status-only patch", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    signIn();
+
+    const patches: { path: string; body: unknown }[] = [];
+
+    server.use(
+      meHandler(),
+      habitsHandler([makeHabit({ id: READ, name: "Read 30 minutes" })]),
+      habitSummaryHandler([makeHabitSummary({ habitId: READ })]),
+      eventsHandler([]),
+      msw.patch("/api/habits/:id", async ({ params, request }) => {
+        patches.push({ path: String(params["id"]), body: await request.json() });
+
+        return HttpResponse.json(
+          makeHabit({ id: READ, name: "Read 30 minutes", status: "ARCHIVED" }),
+        );
+      }),
+    );
+
+    renderWithProviders(<HabitsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Archive Read 30 minutes" }));
+
+    // Only `status`: resending the form's whole body would overwrite fields
+    // nobody touched.
+    await waitFor(() =>
+      expect(patches).toEqual([{ path: READ, body: { status: "ARCHIVED" } }]),
+    );
+  });
+
+  it("hides archived habits behind a toggle and restores them", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    signIn();
+
+    const patches: unknown[] = [];
+
+    server.use(
+      meHandler(),
+      habitsHandler([
+        makeHabit({ id: READ, name: "Read 30 minutes" }),
+        makeHabit({ id: RUN, name: "Run", status: "ARCHIVED" }),
+      ]),
+      habitSummaryHandler([makeHabitSummary({ habitId: READ })]),
+      eventsHandler([]),
+      msw.patch("/api/habits/:id", async ({ request }) => {
+        patches.push(await request.json());
+
+        return HttpResponse.json(makeHabit({ id: RUN, name: "Run" }));
+      }),
+    );
+
+    renderWithProviders(<HabitsPage />);
+
+    // The archived habit is in the response but not in the tracker.
+    expect(await screen.findByText("Read 30 minutes")).toBeInTheDocument();
+    expect(screen.queryByText("Run")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show archived (1)" }));
+    expect(screen.getByText("Run")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(patches).toEqual([{ status: "ACTIVE" }]));
+  });
+
+  it("opens the form on the habit whose row was clicked", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    signIn();
+    server.use(
+      meHandler(),
+      habitsHandler([
+        makeHabit({
+          id: RUN,
+          name: "Run",
+          frequency: "WEEKLY",
+          frequencyTarget: 3,
+          startDate: "2026-01-01T00:00:00.000Z",
+        }),
+      ]),
+      habitSummaryHandler([makeHabitSummary({ habitId: RUN })]),
+      eventsHandler([]),
+    );
+
+    renderWithProviders(<HabitsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Run" }));
+
+    expect(await screen.findByText("Edit habit")).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Run");
+    expect(screen.getByLabelText("Times per period")).toHaveValue("3");
+    // A `@db.Date` column read back in UTC, not through the browser's zone.
+    expect(screen.getByLabelText("Start date")).toHaveValue("2026-01-01");
   });
 });

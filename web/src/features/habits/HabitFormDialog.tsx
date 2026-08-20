@@ -19,10 +19,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessages } from "@/lib/errors";
 import { PERIOD_NOUN, pluralize } from "./habit-overview";
-import { habitFormDefaults, habitFormSchema, toCreateHabitBody } from "./habit.schemas";
+import {
+  habitFormDefaults,
+  habitFormSchema,
+  toCreateHabitBody,
+  toUpdateHabitBody,
+} from "./habit.schemas";
 import type { HabitFormValues } from "./habit.schemas";
-import { HABIT_FREQUENCY } from "./habit.types";
-import { useCreateHabit } from "./habits.queries";
+import { HABIT_FREQUENCY, HABIT_STATUS } from "./habit.types";
+import type { Habit } from "./habit.types";
+import { useCreateHabit, useUpdateHabit } from "./habits.queries";
 
 const FREQUENCY_LABEL: Record<(typeof HABIT_FREQUENCY)[number], string> = {
   DAILY: "Daily",
@@ -30,36 +36,53 @@ const FREQUENCY_LABEL: Record<(typeof HABIT_FREQUENCY)[number], string> = {
   MONTHLY: "Monthly",
 };
 
+const STATUS_LABEL: Record<(typeof HABIT_STATUS)[number], string> = {
+  ACTIVE: "Active",
+  PAUSED: "Paused",
+  ARCHIVED: "Archived",
+};
+
 export function HabitFormDialog({
   open,
   onOpenChange,
   today,
+  habit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Today in the user's own zone, the default a habit starts on. */
+  /** Today in the user's own zone, the default a new habit starts on. */
   today: string;
+  /** Absent creates; present edits that habit. */
+  habit?: Habit | undefined;
 }) {
   const form = useForm<HabitFormValues>({
     resolver: zodResolver(habitFormSchema),
-    defaultValues: habitFormDefaults(today),
+    defaultValues: habitFormDefaults(today, habit),
   });
 
   const create = useCreateHabit();
+  const update = useUpdateHabit();
+  const isPending = create.isPending || update.isPending;
 
   useEffect(() => {
     if (open) {
-      form.reset(habitFormDefaults(today));
+      form.reset(habitFormDefaults(today, habit));
     }
-  }, [open, today, form]);
+  }, [open, today, habit, form]);
 
   const frequency = form.watch("frequency");
   const frequencyTarget = form.watch("frequencyTarget");
   const hasNumericTarget = form.watch("hasNumericTarget");
+  const status = form.watch("status");
 
   const submit = form.handleSubmit(async (values) => {
     try {
-      await create.mutateAsync(toCreateHabitBody(values));
+      if (habit) {
+        await update.mutateAsync({ id: habit.id, body: toUpdateHabitBody(values) });
+      } else {
+        await create.mutateAsync(toCreateHabitBody(values));
+      }
+
       onOpenChange(false);
     } catch (error) {
       form.setError("root", { message: errorMessages(error).join(" ") });
@@ -78,9 +101,13 @@ export function HabitFormDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="font-heading text-[28px] leading-tight font-normal">
-            New habit
+            {habit ? "Edit habit" : "New habit"}
           </DialogTitle>
-          <DialogDescription>What do you want to keep doing?</DialogDescription>
+          <DialogDescription>
+            {habit
+              ? "Change the ritual, its cadence, or where it stands."
+              : "What do you want to keep doing?"}
+          </DialogDescription>
         </DialogHeader>
 
         <form className="flex flex-col gap-[18px]" onSubmit={submit} noValidate>
@@ -96,6 +123,24 @@ export function HabitFormDialog({
           >
             <Textarea id="description" rows={3} {...form.register("description")} />
           </Field>
+
+          {habit ? (
+            <div className="flex flex-col gap-1.5">
+              <Label>Status</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {HABIT_STATUS.map((option) => (
+                  <ChipButton
+                    key={option}
+                    variant="solid"
+                    selected={status === option}
+                    onClick={() => form.setValue("status", option, { shouldValidate: true })}
+                  >
+                    {STATUS_LABEL[option]}
+                  </ChipButton>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="border-border bg-background flex flex-col gap-3.5 rounded-2xl border p-4">
             <div className="flex flex-col gap-1.5">
@@ -198,8 +243,8 @@ export function HabitFormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Saving…" : "Create habit"}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Saving…" : habit ? "Save changes" : "Create habit"}
             </Button>
           </DialogFooter>
         </form>

@@ -7,6 +7,7 @@ import { USER_ID, makeHabit, meHandler } from "@/test/handlers";
 import { server } from "@/test/msw-server";
 import { renderWithProviders } from "@/test/render";
 import { HabitFormDialog } from "./HabitFormDialog";
+import type { Habit } from "./habit.types";
 
 const READ = "3f8c1b2a-4d5e-4f60-9a1b-2c3d4e5f6071";
 
@@ -19,11 +20,20 @@ function createHabitHandler(bodies: unknown[]) {
   });
 }
 
-function renderForm() {
+/** Captures the body of PATCH /habits/:id. */
+function updateHabitHandler(bodies: unknown[]) {
+  return msw.patch("/api/habits/:id", async ({ request }) => {
+    bodies.push(await request.json());
+
+    return HttpResponse.json(makeHabit({ id: READ, name: "Read 30 minutes" }));
+  });
+}
+
+function renderForm(habit?: Habit) {
   window.localStorage.setItem("lifeos.userId", USER_ID);
 
   return renderWithProviders(
-    <HabitFormDialog open onOpenChange={() => {}} today="2026-08-19" />,
+    <HabitFormDialog open onOpenChange={() => {}} today="2026-08-19" habit={habit} />,
   );
 }
 
@@ -142,6 +152,67 @@ describe("HabitFormDialog", () => {
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ targetValue: 2, targetUnit: "litres" });
+  });
+
+  it("sends every field on edit, nulling the ones that were cleared", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+
+    server.use(meHandler(), updateHabitHandler(bodies));
+    renderForm(
+      makeHabit({
+        id: READ,
+        name: "Read 30 minutes",
+        description: "Before bed",
+        startDate: "2026-01-01T00:00:00.000Z",
+        targetValue: 30,
+        targetUnit: "minutes",
+      }),
+    );
+
+    // Clearing two fields that the habit currently has values for.
+    await user.clear(screen.getByLabelText("Description"));
+    await user.click(screen.getByLabelText("Has a numeric target"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    // `UpdateHabitDto` is a PartialType, so an omitted key keeps its stored
+    // value — only an explicit null clears one.
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        {
+          name: "Read 30 minutes",
+          description: null,
+          frequency: "DAILY",
+          frequencyTarget: 1,
+          targetValue: null,
+          targetUnit: null,
+          startDate: "2026-01-01T12:00:00.000Z",
+          endDate: null,
+          status: "ACTIVE",
+        },
+      ]),
+    );
+  });
+
+  it("carries a status change through the same patch", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+
+    server.use(meHandler(), updateHabitHandler(bodies));
+    renderForm(makeHabit({ id: READ, name: "Read 30 minutes" }));
+
+    await user.click(screen.getByRole("button", { name: "Paused" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ status: "PAUSED" });
+  });
+
+  it("offers no status while creating, since the service applies ACTIVE", () => {
+    server.use(meHandler());
+    renderForm();
+
+    expect(screen.queryByRole("button", { name: "Paused" })).not.toBeInTheDocument();
   });
 
   it("shows what the API rejected instead of closing", async () => {

@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import { dateInputToUtcDate, utcDateToDateInput } from "@/lib/date";
-import { HABIT_FREQUENCY } from "./habit.types";
-import type { Habit, HabitFrequency } from "./habit.types";
+import { HABIT_FREQUENCY, HABIT_STATUS } from "./habit.types";
+import type { Habit, HabitFrequency, HabitStatus } from "./habit.types";
 
 /**
  * The form speaks strings and "" for "not filled in"; the API speaks typed
@@ -17,6 +17,7 @@ export const habitFormSchema = z
     name: z.string().trim().min(1, "Required").max(120, "At most 120 characters"),
     description: z.string().trim().max(2000, "At most 2000 characters"),
     frequency: z.enum(HABIT_FREQUENCY),
+    status: z.enum(HABIT_STATUS),
     /** A string, because the input is one — parsed in the refinement below. */
     frequencyTarget: z.string(),
     startDate: z.string().min(1, "Required"),
@@ -63,6 +64,27 @@ export const habitFormSchema = z
 
 export type HabitFormValues = z.infer<typeof habitFormSchema>;
 
+/**
+ * Every field, including the ones being cleared. `UpdateHabitDto` is a
+ * `PartialType`, so an omitted key keeps its stored value and only an explicit
+ * `null` removes one — the same reason the goal mapper sends nulls.
+ *
+ * The four fields `CreateHabitDto` requires are never null here: mapped-types
+ * marks them optional, so a null would slip past validation and fail against a
+ * non-nullable column instead.
+ */
+export type UpdateHabitBody = {
+  name: string;
+  description: string | null;
+  frequency: HabitFrequency;
+  frequencyTarget: number;
+  targetValue: number | null;
+  targetUnit: string | null;
+  startDate: string;
+  endDate: string | null;
+  status: HabitStatus;
+};
+
 export type CreateHabitBody = {
   name: string;
   description?: string;
@@ -80,6 +102,7 @@ export function habitFormDefaults(today: string, habit?: Habit): HabitFormValues
     name: habit?.name ?? "",
     description: habit?.description ?? "",
     frequency: habit?.frequency ?? "DAILY",
+    status: habit?.status ?? "ACTIVE",
     frequencyTarget: String(habit?.frequencyTarget ?? 1),
     startDate: habit ? utcDateToDateInput(habit.startDate) : today,
     endDate: utcDateToDateInput(habit?.endDate),
@@ -116,4 +139,19 @@ export function toCreateHabitBody(values: HabitFormValues): CreateHabitBody {
   }
 
   return body;
+}
+
+export function toUpdateHabitBody(values: HabitFormValues): UpdateHabitBody {
+  return {
+    name: values.name.trim(),
+    description: values.description.trim() || null,
+    frequency: values.frequency,
+    frequencyTarget: Number(values.frequencyTarget),
+    targetValue: values.hasNumericTarget ? Number(values.targetValue) : null,
+    targetUnit:
+      values.hasNumericTarget && values.targetUnit.trim() ? values.targetUnit.trim() : null,
+    startDate: dateInputToUtcDate(values.startDate),
+    endDate: values.endDate ? dateInputToUtcDate(values.endDate) : null,
+    status: values.status,
+  };
 }

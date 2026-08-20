@@ -15,8 +15,8 @@ Current state: backend V1 with the whole Core exposed over HTTP — `users`, `ar
 `goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
 `web/` with screens for `areas`, `goals` and `habits`, plus a dashboard. `events`,
 `metrics` and `notes` have no screen of their own yet, so a metric can only be recorded
-through the API. A habit can be created, completed and un-completed from the web app, but
-not yet edited or archived from it.
+through the API. Habits are fully managed from the web app — created, edited, completed,
+paused and archived — except for `DELETE /habits/:id`, which no screen calls.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -179,6 +179,23 @@ A square means "completed at least once", not "fulfilled": `frequencyTarget` may
 more than one a day and a weekly habit's period is not a day at all — the tile above
 reports fulfilment, from `GET /habits/:id/summary`. Since nothing enforces one completion
 per day, clearing a square deletes **every** event on it, or the square would stay ticked.
+
+**The three statuses split the page three ways**, and the page asks `GET /habits` with no
+`status` at all — archiving is a status change, so a hidden archive is a section that is
+not drawn, not a narrower request, exactly as `showCancelled` works on the goals board. A
+**paused** habit keeps its tracker row, because its squares are history and dropping them
+would make the calendar disagree with the tracker; it is left out of the tiles above and
+out of the summary fan-out, since a paused habit has no period to be on track in. An
+**archived** one gets a plain list with a Restore button and no squares — ticking one would
+record a completion against something the user has put away. Archiving deletes nothing:
+the completions stay in the event log either way.
+
+Archive, restore and pause from a row go through `setHabitStatus`, kept apart from
+`useUpdateHabit` for the reason the goals board keeps the two apart: `UpdateHabitBody`
+carries every field, so reusing it would resend a name and a target nobody touched and
+overwrite whatever another tab changed. `UpdateHabitDto` is a `PartialType`, so a lone
+`status` is a valid request — and, for the same reason, the form's own patch has to send
+explicit `null`s to clear a field.
 
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record.

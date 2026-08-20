@@ -3,13 +3,15 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { queryKeys } from "@/api/query-keys";
 import { deleteEvent } from "@/features/events/events.api";
 import type { HabitStatus, HabitSummary } from "./habit.types";
-import type { CreateHabitBody } from "./habit.schemas";
+import type { CreateHabitBody, UpdateHabitBody } from "./habit.schemas";
 import {
   completeHabit,
   createHabit,
   getHabitSummary,
   listHabitCompletions,
   listHabits,
+  setHabitStatus,
+  updateHabit,
 } from "./habits.api";
 
 /**
@@ -70,6 +72,29 @@ export function useCreateHabit() {
   const invalidate = useInvalidateHabits();
 
   return useMutation({ mutationFn: (body: CreateHabitBody) => createHabit(body), onSuccess: invalidate });
+}
+
+export function useUpdateHabit() {
+  const invalidate = useInvalidateHabits();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateHabitBody }) => updateHabit(id, body),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Archiving, pausing or resuming from a row. Kept apart from `useUpdateHabit`
+ * for the reason `setHabitStatus` documents, and mirroring how the goals board
+ * separates the two. `variables` lets the row that is moving disable itself.
+ */
+export function useSetHabitStatus() {
+  const invalidate = useInvalidateHabits();
+
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: HabitStatus }) => setHabitStatus(id, status),
+    onSuccess: invalidate,
+  });
 }
 
 /**

@@ -2,7 +2,7 @@ import { http } from "@/api/http";
 import type { LifeEvent } from "@/features/events/event.types";
 import { listAllEvents } from "@/features/events/events.api";
 import { HABIT_COMPLETED } from "./habit-completions";
-import type { CreateHabitBody } from "./habit.schemas";
+import type { CreateHabitBody, UpdateHabitBody } from "./habit.schemas";
 import type { Habit, HabitStatus, HabitSummary } from "./habit.types";
 
 export function listHabits(status?: HabitStatus): Promise<Habit[]> {
@@ -11,6 +11,22 @@ export function listHabits(status?: HabitStatus): Promise<Habit[]> {
 
 export function createHabit(body: CreateHabitBody): Promise<Habit> {
   return http.post<Habit>("/habits", body);
+}
+
+export function updateHabit(id: string, body: UpdateHabitBody): Promise<Habit> {
+  return http.patch<Habit>(`/habits/${id}`, body);
+}
+
+/**
+ * Archiving, pausing or resuming from a row, without the form's body.
+ *
+ * `UpdateHabitBody` carries every field, so reusing it here would resend a
+ * name, a period and a target nobody touched — and overwrite whatever another
+ * tab changed in between. `UpdateHabitDto` is a PartialType, so a lone `status`
+ * is a valid request and leaves the rest alone.
+ */
+export function setHabitStatus(id: string, status: HabitStatus): Promise<Habit> {
+  return http.patch<Habit>(`/habits/${id}`, { status });
 }
 
 export function getHabitSummary(id: string): Promise<HabitSummary> {

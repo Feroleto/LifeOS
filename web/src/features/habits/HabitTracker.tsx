@@ -1,5 +1,6 @@
-import { Check, CircleCheck } from "lucide-react";
+import { Archive, Check, CircleCheck, Pencil } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { dayKeyToInstant } from "./habit-completions";
 import type { CompletionsByDay } from "./habit-completions";
@@ -66,6 +67,9 @@ export function HabitTracker({
   timeZone,
   pendingKey,
   onToggle,
+  onEdit,
+  onArchive,
+  movingHabitId,
 }: {
   habits: Habit[];
   dayKeys: string[];
@@ -75,6 +79,10 @@ export function HabitTracker({
   /** `${habitId}:${dayKey}` of the square waiting on a request, if any. */
   pendingKey: string | null;
   onToggle: (habit: Habit, dayKey: string, events: string[]) => void;
+  onEdit: (habit: Habit) => void;
+  onArchive: (habit: Habit) => void;
+  /** The habit whose status is being changed, so its row can wait quietly. */
+  movingHabitId: string | null;
 }) {
   return (
     <div className="rounded-bento border-border bg-card shadow-bento flex flex-col gap-5 border p-6">
@@ -90,8 +98,22 @@ export function HabitTracker({
               className="border-border flex items-center justify-between gap-4 border-b py-3 last:border-b-0"
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <CircleCheck className="text-chart-1 size-4 shrink-0" />
+                <CircleCheck
+                  className={cn(
+                    "size-4 shrink-0",
+                    habit.status === "PAUSED" ? "text-subtle" : "text-chart-1",
+                  )}
+                />
                 <span className="truncate text-sm font-medium">{habit.name}</span>
+                {/*
+                  A paused habit keeps its row: its squares are history, and
+                  hiding them would make the calendar disagree with the tracker.
+                */}
+                {habit.status === "PAUSED" ? (
+                  <span className="rounded-chip bg-muted text-muted-foreground shrink-0 px-2 py-0.5 text-[10px] font-bold">
+                    Paused
+                  </span>
+                ) : null}
               </span>
 
               <span className="flex shrink-0 items-center gap-1.5">
@@ -114,6 +136,30 @@ export function HabitTracker({
                     />
                   );
                 })}
+
+                <span className="ml-1.5 flex items-center gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-foreground size-7"
+                    aria-label={`Edit ${habit.name}`}
+                    onClick={() => onEdit(habit)}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-foreground size-7"
+                    aria-label={`Archive ${habit.name}`}
+                    disabled={movingHabitId === habit.id}
+                    onClick={() => onArchive(habit)}
+                  >
+                    <Archive className="size-3.5" />
+                  </Button>
+                </span>
               </span>
             </li>
           );

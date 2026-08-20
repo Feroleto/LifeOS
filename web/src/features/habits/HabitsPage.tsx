@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { ChipButton } from "@/components/chip-button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/layout/states";
 import { Button } from "@/components/ui/button";
 import { useMe } from "@/identity/user.queries";
 import { todayInputValue } from "@/lib/date";
+import { HabitArchive } from "./HabitArchive";
 import { HabitCalendar } from "./HabitCalendar";
-import { HabitFormDialog } from "./HabitFormDialog";
 import { HabitConsistencyCard } from "./HabitConsistencyCard";
+import { HabitFormDialog } from "./HabitFormDialog";
 import { HabitStreaksCard } from "./HabitStreaksCard";
 import { HabitTracker } from "./HabitTracker";
 import {
@@ -19,11 +21,13 @@ import {
   monthGrid,
 } from "./habit-completions";
 import { summarizeProgress, topStreaks } from "./habit-overview";
+import type { Habit } from "./habit.types";
 import {
   useCompleteHabit,
   useHabitCompletions,
   useHabitSummaries,
   useHabits,
+  useSetHabitStatus,
   useUncompleteHabit,
 } from "./habits.queries";
 
@@ -35,7 +39,10 @@ const TOP_STREAKS = 3;
 
 export function HabitsPage() {
   const me = useMe();
-  const habits = useHabits("ACTIVE");
+  // Every status in one request, the way the goals board asks for its own list:
+  // archiving is a status change, so hiding an archived habit is a section that
+  // is not drawn rather than a narrower query.
+  const habits = useHabits();
 
   const locale = me.data?.locale ?? "en-US";
   // Until the user record arrives, the browser's own zone is the best guess.
@@ -48,22 +55,34 @@ export function HabitsPage() {
   const now = new Date();
 
   const list = habits.data ?? [];
-  const habitIds = list.map((habit) => habit.id);
+  // A paused habit still has a past worth drawing, so the tracker keeps it and
+  // only the archived ones move out.
+  const tracked = list.filter((habit) => habit.status !== "ARCHIVED");
+  const active = tracked.filter((habit) => habit.status === "ACTIVE");
+  const archived = list.filter((habit) => habit.status === "ARCHIVED");
 
-  // One request per habit, for the tile that counts them, and one sweep of the
-  // event log for both grids below. The sweep is what keeps the tracker off a
-  // request per row.
-  const summaries = useHabitSummaries(habitIds);
+  // One derived read per **active** habit, not per row: a paused habit has no
+  // period to be on track in, and the tiles above only count the running ones.
+  const summaries = useHabitSummaries(active.map((habit) => habit.id));
+  // One sweep of the event log for both grids below, which is what keeps the
+  // tracker off a request per row.
   const completions = useHabitCompletions(completionWindowFrom(TRACKED_DAYS, timeZone, now));
 
   const complete = useCompleteHabit();
   const uncomplete = useUncompleteHabit();
+  const setStatus = useSetHabitStatus();
 
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Habit | undefined>(undefined);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const grouped = groupCompletions(completions.data ?? [], habitIds, timeZone);
-  const progress = summarizeProgress(list, summaries.byHabitId);
-  const streaks = topStreaks(list, summaries.byHabitId, TOP_STREAKS);
+  const grouped = groupCompletions(
+    completions.data ?? [],
+    tracked.map((habit) => habit.id),
+    timeZone,
+  );
+  const progress = summarizeProgress(active, summaries.byHabitId);
+  const streaks = topStreaks(active, summaries.byHabitId, TOP_STREAKS);
 
   // Only one square is ever in flight, so the two mutations share one slot.
   const pendingKey = complete.isPending
@@ -71,6 +90,11 @@ export function HabitsPage() {
     : uncomplete.isPending
       ? `${uncomplete.variables.habitId}:${uncomplete.variables.dayKey}`
       : null;
+
+  const openForm = (habit?: Habit) => {
+    setEditing(habit);
+    setFormOpen(true);
+  };
 
   return (
     <section className="flex flex-col gap-8">
@@ -84,7 +108,7 @@ export function HabitsPage() {
 
         <Button
           className="h-10 rounded-xl px-4 text-[13px] font-semibold"
-          onClick={() => setFormOpen(true)}
+          onClick={() => openForm()}
         >
           <Plus /> New habit
         </Button>
@@ -95,62 +119,93 @@ export function HabitsPage() {
       ) : habits.isError ? (
         <ErrorState error={habits.error} onRetry={() => void habits.refetch()} />
       ) : list.length === 0 ? (
-        <EmptyState
-          title="No active habits"
-          description="Add the first ritual you want to keep."
-        >
-          <Button size="sm" onClick={() => setFormOpen(true)}>
+        <EmptyState title="No habits yet" description="Add the first ritual you want to keep.">
+          <Button size="sm" onClick={() => openForm()}>
             New habit
           </Button>
         </EmptyState>
       ) : (
         <>
-          <div className="grid gap-5 md:grid-cols-2">
-            <HabitConsistencyCard progress={progress} />
-            <HabitStreaksCard streaks={streaks} />
-          </div>
+          {tracked.length > 0 ? (
+            <>
+              <div className="grid gap-5 md:grid-cols-2">
+                <HabitConsistencyCard progress={progress} />
+                <HabitStreaksCard streaks={streaks} />
+              </div>
 
-          {completions.isError ? (
-            <ErrorState error={completions.error} onRetry={() => void completions.refetch()} />
+              {completions.isError ? (
+                <ErrorState error={completions.error} onRetry={() => void completions.refetch()} />
+              ) : (
+                <div className="grid gap-5 xl:grid-cols-5">
+                  <div className="xl:col-span-3">
+                    <HabitTracker
+                      habits={tracked}
+                      dayKeys={lastDayKeys(TRACKED_DAYS, timeZone, now)}
+                      completions={grouped}
+                      locale={locale}
+                      timeZone={timeZone}
+                      pendingKey={pendingKey}
+                      movingHabitId={setStatus.isPending ? setStatus.variables.id : null}
+                      onEdit={openForm}
+                      onArchive={(habit) => setStatus.mutate({ id: habit.id, status: "ARCHIVED" })}
+                      // The square carries the events behind it, so undoing a
+                      // day needs no second lookup: an empty list means
+                      // "record one".
+                      onToggle={(habit, dayKey, eventIds) => {
+                        if (eventIds.length > 0) {
+                          uncomplete.mutate({ eventIds, habitId: habit.id, dayKey });
+                          return;
+                        }
+
+                        complete.mutate({
+                          id: habit.id,
+                          dayKey,
+                          occurredAt: dayKeyToInstant(dayKey, timeZone),
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div className="xl:col-span-2">
+                    <HabitCalendar
+                      cells={monthGrid(timeZone, now)}
+                      countsByDay={countHabitsPerDay(grouped)}
+                      habitCount={tracked.length}
+                      locale={locale}
+                      timeZone={timeZone}
+                      now={now}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-5">
-              <div className="xl:col-span-3">
-                <HabitTracker
-                  habits={list}
-                  dayKeys={lastDayKeys(TRACKED_DAYS, timeZone, now)}
-                  completions={grouped}
-                  locale={locale}
-                  timeZone={timeZone}
-                  pendingKey={pendingKey}
-                  // The square carries the events behind it, so undoing a day
-                  // needs no second lookup: an empty list means "record one".
-                  onToggle={(habit, dayKey, eventIds) => {
-                    if (eventIds.length > 0) {
-                      uncomplete.mutate({ eventIds, habitId: habit.id, dayKey });
-                      return;
-                    }
-
-                    complete.mutate({
-                      id: habit.id,
-                      dayKey,
-                      occurredAt: dayKeyToInstant(dayKey, timeZone),
-                    });
-                  }}
-                />
-              </div>
-
-              <div className="xl:col-span-2">
-                <HabitCalendar
-                  cells={monthGrid(timeZone, now)}
-                  countsByDay={countHabitsPerDay(grouped)}
-                  habitCount={list.length}
-                  locale={locale}
-                  timeZone={timeZone}
-                  now={now}
-                />
-              </div>
-            </div>
+            <EmptyState
+              title="Every habit is archived"
+              description="Restore one below, or add something new to keep."
+            />
           )}
+
+          {archived.length > 0 ? (
+            <div className="flex flex-col gap-5">
+              <ChipButton
+                variant="muted"
+                selected={showArchived}
+                onClick={() => setShowArchived(!showArchived)}
+                className="self-start"
+              >
+                {showArchived ? "Hide" : "Show"} archived ({archived.length})
+              </ChipButton>
+
+              {showArchived ? (
+                <HabitArchive
+                  habits={archived}
+                  movingHabitId={setStatus.isPending ? setStatus.variables.id : null}
+                  onRestore={(habit) => setStatus.mutate({ id: habit.id, status: "ACTIVE" })}
+                />
+              ) : null}
+            </div>
+          ) : null}
         </>
       )}
 
@@ -158,6 +213,7 @@ export function HabitsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         today={todayInputValue(timeZone, now)}
+        habit={editing}
       />
     </section>
   );

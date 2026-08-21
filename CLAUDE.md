@@ -13,12 +13,12 @@ and section 17 lists architectural rules the schema is meant to obey.
 
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
 `goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
-`web/` with screens for `areas`, `goals` and `habits`, plus a dashboard. `events`,
-`metrics` and `notes` have no screen of their own yet; metrics are nonetheless read and
-written from the **area page**, which is the only place the client touches them, while
-`notes` and `/timeline` have no consumer at all. Habits are fully managed from the web app
-— created, edited, completed, paused and archived — except for `DELETE /habits/:id`, which
-no screen calls.
+`web/` covering the whole Core: `areas`, `goals`, `habits`, `notes` and `/timeline` have
+screens, plus a dashboard. `metrics` has no screen of its own but is read and written from
+the **area page**, and `events` has none either — a completion is written from `habits`,
+read on `/timeline`, and deleted from the habit tracker. Habits are fully managed from the
+web app — created, edited, completed, paused and archived — except for
+`DELETE /habits/:id`, which no screen calls.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -235,11 +235,43 @@ typo lands on; a delete on every bar would turn a trend line into a hit area.
 tracker: page 1 reports `meta.pages`, so a single page costs one request, and a cap stops a
 wide window from becoming an unbounded run.
 
+**Notes are a screen and a card**, because `NOTE.areaId` is optional in both directions: an
+area page shows what is filed under it, but a note filed under *none* is normal and only
+`/notes` lists those. The search box sends `q` to the **server** — unlike the goals board's
+`showCancelled`, which filters a list already in hand — because the API is what matches on
+`content`, which the client never holds in full. It is debounced, and `keepPreviousData`
+keeps the previous answer on screen while the narrower one loads; without it every
+keystroke is a new query key and so a new skeleton.
+
+**The timeline is a feed, and stays read-only.** `TimelineController` calls itself a view:
+records are created and deleted through `/events` and `/notes`, which own them. A delete on
+a row would give `EVENT` a second write path next to the habit tracker's, for the same
+record, with no screen owning it — so a note row opens the notes module's own dialog and an
+event row offers nothing.
+
+It is the one place using **`useInfiniteQuery`** rather than `fetchAllPages`, and the
+distinction is the point: a sweep is for a *bounded window* whose caller cannot draw a
+partial answer, while the timeline has no window at all and a partial answer is what a feed
+is. "Load more" is a button rather than a scroll listener because a deep page genuinely
+costs more — `mergePage` reads `skip + take` rows from **both** tables to slice one page.
+
+A `HABIT_COMPLETED` row resolves `metadata.habitId` against the cached `GET /habits`, since
+"Habit completed · 4f3a…" is not a timeline. That list is asked for with **no status**: the
+event log keeps a completion after its habit is paused or archived. A completion also
+outlives a *deleted* habit — no foreign key cascades through JSON — so an unresolvable id
+falls back to the prettified `type` instead of blanking the row, and an unknown future type
+renders the same way rather than crashing.
+
+Days on that screen are days in the user's `timezone` (`toDayKey`), for the reason the
+habit tracker's squares are.
+
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
 well, because goal responses embed the whole `Area` record. So does mutating a **metric**,
 and for a sharper reason: a goal carrying `metricKey` stores no progress at all — its
 `percentage` is a sum over `METRIC` rows — so a new reading moves a bar the board and the
-area page have already cached.
+area page have already cached. And writing a **note** invalidates the timeline, because a
+note is not merely shown there: foundation section 6 puts it on the feed directly, with no
+`NOTE_CREATED` event standing in for it.
 
 The web gate in `.husky/pre-commit` only runs when the commit stages something under
 `web/`, so backend-only commits keep their previous cost.

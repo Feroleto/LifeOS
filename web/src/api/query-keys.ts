@@ -27,4 +27,18 @@ export const queryKeys = {
     all: ["metrics"] as const,
     list: (query: Record<string, string | undefined>) => ["metrics", "list", query] as const,
   },
+  notes: {
+    all: ["notes"] as const,
+    /*
+      `q` is part of the key because it is part of the request: the API does the
+      searching, so each term is a different answer rather than a filter over
+      one cached list.
+    */
+    list: (filters: { q?: string; areaId?: string }) => ["notes", "list", filters] as const,
+  },
+  timeline: {
+    all: ["timeline"] as const,
+    /** The pages of one feed, held together by useInfiniteQuery. */
+    list: (filters: { kind?: string }) => ["timeline", "list", filters] as const,
+  },
 } as const;

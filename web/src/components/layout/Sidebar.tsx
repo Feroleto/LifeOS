@@ -1,4 +1,4 @@
-import { CircleCheck, House, Leaf, Settings2 } from "lucide-react";
+import { CircleCheck, Clock, House, Leaf, Settings2, StickyNote } from "lucide-react";
 import { NavLink, useLocation, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -78,14 +78,30 @@ export function Sidebar() {
           ))}
 
           {/*
-            Habits sit below the areas rather than among them: `Habit` has no
-            relation to `Area`, so the item is a Core concept, not a filter.
+            Habits, notes and the timeline sit below the areas rather than among
+            them: they are Core concepts, not filters. `Habit` names no area at
+            all, and while a note may carry one, the screen lists every note
+            including the ones filed under none.
           */}
           <NavItem
             to="/habits"
             icon={CircleCheck}
             label="Habits"
             isActive={pathname === "/habits"}
+          />
+
+          <NavItem
+            to="/notes"
+            icon={StickyNote}
+            label="Notes"
+            isActive={pathname === "/notes"}
+          />
+
+          <NavItem
+            to="/timeline"
+            icon={Clock}
+            label="Timeline"
+            isActive={pathname === "/timeline"}
           />
 
           <NavItem

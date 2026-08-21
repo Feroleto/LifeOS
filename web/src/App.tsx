@@ -7,6 +7,8 @@ import { AreasPage } from "@/features/areas/AreasPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { GoalsPage } from "@/features/goals/GoalsPage";
 import { HabitsPage } from "@/features/habits/HabitsPage";
+import { NotesPage } from "@/features/notes/NotesPage";
+import { TimelinePage } from "@/features/timeline/TimelinePage";
 import { RequireIdentity } from "@/identity/RequireIdentity";
 import { SetupPage } from "@/identity/SetupPage";
 
@@ -20,6 +22,8 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="goals" element={<GoalsPage />} />
           <Route path="habits" element={<HabitsPage />} />
+          <Route path="notes" element={<NotesPage />} />
+          <Route path="timeline" element={<TimelinePage />} />
           <Route path="areas" element={<AreasPage />} />
           <Route path="areas/:areaId" element={<AreaPage />} />
         </Route>

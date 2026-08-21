@@ -10,11 +10,14 @@ import { useHabitSummaries, useHabits } from "@/features/habits/habits.queries";
 import { MetricFormDialog } from "@/features/metrics/MetricFormDialog";
 import { toSeries } from "@/features/metrics/metric-series";
 import { useDeleteMetric, useMetrics } from "@/features/metrics/metrics.queries";
+import { NoteFormDialog } from "@/features/notes/NoteFormDialog";
+import { useNotes } from "@/features/notes/notes.queries";
 import { useMe } from "@/identity/user.queries";
 import { shiftDayKey, todayInputValue } from "@/lib/date";
 import { AreaGoalsCard } from "./AreaGoalsCard";
 import { AreaHabitCard } from "./AreaHabitCard";
 import { AreaMetricCard } from "./AreaMetricCard";
+import { AreaNotesCard } from "./AreaNotesCard";
 import { areaColorVars } from "./area-color";
 import { AreaIcon } from "./area-icon";
 import { useAreas } from "./areas.queries";
@@ -34,6 +37,7 @@ export function AreaPage() {
   // `undefined` opens the dialog on the series touched last; a key opens it on
   // that one, which is how a card's own "+" differs from the header button.
   const [recording, setRecording] = useState<{ seriesKey?: string } | null>(null);
+  const [writingNote, setWritingNote] = useState(false);
 
   // From the list rather than a GET /areas/:id: the sidebar already holds it,
   // so this shares that cache entry instead of spending a request to re-fetch
@@ -48,9 +52,12 @@ export function AreaPage() {
   const goals = useGoals({ areaId });
   const habits = useHabits({ areaId, status: "ACTIVE" });
   const metrics = useMetrics({ areaId, from });
+  // Bare array, not a page: /notes is not one of the paginated collections.
+  const notes = useNotes({ areaId });
 
   const goalList = goals.data ?? [];
   const habitList = habits.data ?? [];
+  const noteList = notes.data ?? [];
 
   // One derived read per habit, and one per metric-fed goal — the same two
   // narrowings the dashboard and the board already make.
@@ -62,8 +69,9 @@ export function AreaPage() {
   // Memoized because the dialog takes it: recomputing it every render would
   // hand the chip row a new array on every keystroke inside the form.
   const series = useMemo(() => toSeries(metrics.data ?? []), [metrics.data]);
-  const isPending = areas.isPending || goals.isPending || habits.isPending || metrics.isPending;
-  const error = areas.error ?? goals.error ?? habits.error ?? metrics.error;
+  const isPending =
+    areas.isPending || goals.isPending || habits.isPending || metrics.isPending || notes.isPending;
+  const error = areas.error ?? goals.error ?? habits.error ?? metrics.error ?? notes.error;
 
   if (areas.isSuccess && !area) {
     return (
@@ -75,7 +83,11 @@ export function AreaPage() {
     );
   }
 
-  const isEmpty = goalList.length === 0 && habitList.length === 0 && series.length === 0;
+  const isEmpty =
+    goalList.length === 0 &&
+    habitList.length === 0 &&
+    series.length === 0 &&
+    noteList.length === 0;
 
   return (
     // Every card below reads the accent off this one element, which is what
@@ -101,13 +113,18 @@ export function AreaPage() {
           </div>
 
           {/*
-            In the header rather than above the measurement cards, because the
-            area with nothing in it is exactly the one that needs this button —
-            and there no card is drawn to hang it off.
+            In the header rather than above their cards, because the area with
+            nothing in it is exactly the one that needs these buttons — and
+            there no card is drawn to hang them off.
           */}
-          <Button onClick={() => setRecording({})}>
-            <Plus className="size-4" /> Record measurement
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setWritingNote(true)}>
+              <Plus className="size-4" /> New note
+            </Button>
+            <Button onClick={() => setRecording({})}>
+              <Plus className="size-4" /> Record measurement
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -120,12 +137,13 @@ export function AreaPage() {
             void goals.refetch();
             void habits.refetch();
             void metrics.refetch();
+            void notes.refetch();
           }}
         />
       ) : isEmpty ? (
         <EmptyState
           title="Nothing here yet"
-          description="Goals, habits and measurements filed under this area show up here."
+          description="Goals, habits, measurements and notes filed under this area show up here."
         />
       ) : (
         <div className="flex flex-col gap-5">
@@ -159,6 +177,16 @@ export function AreaPage() {
             </div>
           ) : null}
 
+          {noteList.length > 0 ? (
+            <div className="grid gap-5 md:grid-cols-2">
+              <AreaNotesCard
+                notes={noteList}
+                locale={locale}
+                onCreate={() => setWritingNote(true)}
+              />
+            </div>
+          ) : null}
+
           {goalList.length > 0 ? (
             <AreaGoalsCard
               goals={goalList}
@@ -178,6 +206,12 @@ export function AreaPage() {
         today={todayInputValue(timeZone, new Date())}
         existingSeries={series}
         seriesKey={recording?.seriesKey}
+      />
+
+      <NoteFormDialog
+        open={writingNote}
+        onOpenChange={setWritingNote}
+        defaultAreaId={areaId}
       />
     </section>
   );

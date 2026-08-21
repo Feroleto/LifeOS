@@ -17,8 +17,10 @@ import {
   makeHabit,
   makeHabitSummary,
   makeMetric,
+  makeNote,
   meHandler,
   metricsHandler,
+  notesHandler,
 } from "@/test/handlers";
 import { server } from "@/test/msw-server";
 import { renderWithProviders } from "@/test/render";
@@ -53,6 +55,7 @@ describe("AreaPage", () => {
         // Belongs to another area, so it must not appear here.
         makeHabit({ id: "h2", name: "Inbox zero", areaId: WORK_ID }),
       ]),
+      notesHandler([]),
       habitSummaryHandler([makeHabitSummary({ habitId: "h1", completionsInPeriod: 6 })]),
       metricsHandler([]),
     );
@@ -73,6 +76,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([
         makeMetric({
@@ -130,6 +134,7 @@ describe("AreaPage", () => {
       // No metricKey on that goal, so no derived read is spent on it.
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([]),
     );
@@ -148,6 +153,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([]),
     );
@@ -167,6 +173,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([]),
       createMetricHandler((body) => bodies.push(body)),
@@ -204,6 +211,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([
         makeMetric({
@@ -243,6 +251,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([
         makeMetric({
@@ -273,6 +282,26 @@ describe("AreaPage", () => {
     await waitFor(() => expect(deleted).toEqual(["m2"]));
   });
 
+  it("is not empty when the area holds only notes", async () => {
+    server.use(
+      meHandler(),
+      areasHandler([HEALTH]),
+      goalsHandler([]),
+      goalProgressHandler([]),
+      habitsHandler([]),
+      notesHandler([
+        makeNote({ id: "n1", title: "Blood test", content: "Ferritin low", areaId: HEALTH_ID }),
+      ]),
+      habitSummaryHandler([]),
+      metricsHandler([]),
+    );
+
+    renderArea();
+
+    expect(await screen.findByText("Blood test")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing here yet")).not.toBeInTheDocument();
+  });
+
   it("reports an area id that matches nothing", async () => {
     server.use(
       meHandler(),
@@ -280,6 +309,7 @@ describe("AreaPage", () => {
       goalsHandler([]),
       goalProgressHandler([]),
       habitsHandler([]),
+      notesHandler([]),
       habitSummaryHandler([]),
       metricsHandler([]),
     );

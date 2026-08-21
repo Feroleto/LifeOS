@@ -6,6 +6,8 @@ import type { Goal, GoalProgress } from "@/features/goals/goal.types";
 import { HABIT_COMPLETED } from "@/features/habits/habit-completions";
 import type { Habit, HabitSummary } from "@/features/habits/habit.types";
 import type { Metric } from "@/features/metrics/metric.types";
+import type { Note } from "@/features/notes/note.types";
+import type { TimelineItem } from "@/features/timeline/timeline.types";
 import type { User } from "@/identity/user.types";
 
 export const USER_ID = "29967d6a-f3c1-4d8d-9b52-f1c79a3bd228";
@@ -241,4 +243,112 @@ export const deleteMetricHandler = (onDelete?: (id: string) => void) =>
     onDelete?.(String(params["id"]));
 
     return new HttpResponse(null, { status: 204 });
+  });
+
+export function makeNote(overrides: Partial<Note> & Pick<Note, "id" | "content">): Note {
+  return {
+    userId: USER_ID,
+    title: null,
+    areaId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+/**
+ * Serves GET /notes as the **bare array** the API answers with, honouring `q`
+ * and `areaId`.
+ *
+ * The filtering is done here rather than in the test's fixture because the page
+ * depends on the server doing it: `q` searches content, which the client never
+ * reads, so a handler returning everything would hide a missing query param.
+ */
+export const notesHandler = (notes: Note[]) =>
+  msw.get("/api/notes", ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const q = params.get("q")?.toLowerCase();
+    const areaId = params.get("areaId");
+
+    const data = notes.filter((note) => {
+      if (areaId !== null && note.areaId !== areaId) {
+        return false;
+      }
+
+      return (
+        q === undefined ||
+        (note.title ?? "").toLowerCase().includes(q) ||
+        note.content.toLowerCase().includes(q)
+      );
+    });
+
+    return HttpResponse.json(data);
+  });
+
+export const createNoteHandler = (onCreate?: (body: Record<string, unknown>) => void) =>
+  msw.post("/api/notes", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    onCreate?.(body);
+
+    return HttpResponse.json(
+      makeNote({
+        id: `note-${String(body["content"])}`,
+        content: String(body["content"]),
+        title: body["title"] === undefined ? null : String(body["title"]),
+        areaId: body["areaId"] === undefined ? null : String(body["areaId"]),
+      }),
+      { status: 201 },
+    );
+  });
+
+export const updateNoteHandler = (onUpdate?: (body: Record<string, unknown>) => void) =>
+  msw.patch("/api/notes/:id", async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    onUpdate?.(body);
+
+    return HttpResponse.json(
+      makeNote({
+        id: String(params["id"]),
+        content: String(body["content"]),
+        title: body["title"] === null ? null : String(body["title"]),
+        areaId: body["areaId"] === null ? null : String(body["areaId"]),
+      }),
+    );
+  });
+
+export const deleteNoteHandler = (onDelete?: (id: string) => void) =>
+  msw.delete("/api/notes/:id", ({ params }) => {
+    onDelete?.(String(params["id"]));
+
+    return new HttpResponse(null, { status: 204 });
+  });
+
+/**
+ * Serves GET /timeline, paginating for real so "Load more" can be exercised.
+ *
+ * `kind` filters the merged list the way the service does by narrowing each
+ * source's `where`, and `limit` is honoured so `meta.pages` is what drives the
+ * next page.
+ */
+export const timelineHandler = (items: TimelineItem[]) =>
+  msw.get("/api/timeline", ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const kind = params.get("kind");
+    const page = Number(params.get("page") ?? 1);
+    const limit = Number(params.get("limit") ?? 50);
+
+    const matching = kind === null ? items : items.filter((item) => item.kind === kind);
+    const skip = (page - 1) * limit;
+
+    return HttpResponse.json({
+      data: matching.slice(skip, skip + limit),
+      meta: {
+        total: matching.length,
+        page,
+        limit,
+        pages: Math.max(1, Math.ceil(matching.length / limit)),
+      },
+    });
   });

@@ -1,10 +1,13 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import {
   USER_ID,
   areasHandler,
+  createMetricHandler,
+  deleteMetricHandler,
   goalProgressHandler,
   goalsHandler,
   habitSummaryHandler,
@@ -152,6 +155,122 @@ describe("AreaPage", () => {
     renderArea();
 
     expect(await screen.findByText("Nothing here yet")).toBeInTheDocument();
+  });
+
+  it("records a measurement into a new series from an area holding nothing", async () => {
+    const user = userEvent.setup();
+    const bodies: Record<string, unknown>[] = [];
+
+    server.use(
+      meHandler(),
+      areasHandler([HEALTH]),
+      goalsHandler([]),
+      goalProgressHandler([]),
+      habitsHandler([]),
+      habitSummaryHandler([]),
+      metricsHandler([]),
+      createMetricHandler((body) => bodies.push(body)),
+    );
+
+    renderArea();
+
+    // The button has to be reachable from the empty state: an area with no
+    // series draws no card to hang it off.
+    await user.click(await screen.findByRole("button", { name: /Record measurement/ }));
+
+    await user.type(await screen.findByLabelText("Series name"), "body_weight");
+    await user.type(screen.getByLabelText("Value"), "74.2");
+    await user.type(screen.getByLabelText("Unit"), "kg");
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+
+    expect(bodies[0]).toMatchObject({
+      key: "body_weight",
+      value: 74.2,
+      unit: "kg",
+      areaId: HEALTH_ID,
+    });
+    // Midday in the user's own zone, so the day survives the round trip.
+    expect(String(bodies[0]!["recordedAt"])).toMatch(/T15:00:00\.000Z$/);
+  });
+
+  it("offers the area's existing series as keys, since no endpoint lists them", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      meHandler(),
+      areasHandler([HEALTH]),
+      goalsHandler([]),
+      goalProgressHandler([]),
+      habitsHandler([]),
+      habitSummaryHandler([]),
+      metricsHandler([
+        makeMetric({
+          id: "m1",
+          key: "sleep_hours",
+          value: 7,
+          unit: "h",
+          recordedAt: "2026-08-19T09:00:00.000Z",
+          areaId: HEALTH_ID,
+        }),
+      ]),
+      createMetricHandler(),
+    );
+
+    renderArea();
+
+    await user.click(await screen.findByRole("button", { name: /Record measurement/ }));
+
+    // Drawn from the window the page swept — the chip, and the unit it carries
+    // over so the series does not acquire a second one.
+    expect(await screen.findByRole("button", { name: "Sleep hours" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText("Unit")).toHaveValue("h");
+    // The free-text key is hidden while an existing series is picked.
+    expect(screen.queryByLabelText("Series name")).not.toBeInTheDocument();
+  });
+
+  it("undoes the latest reading, which is how an append-only series is corrected", async () => {
+    const user = userEvent.setup();
+    const deleted: string[] = [];
+
+    server.use(
+      meHandler(),
+      areasHandler([HEALTH]),
+      goalsHandler([]),
+      goalProgressHandler([]),
+      habitsHandler([]),
+      habitSummaryHandler([]),
+      metricsHandler([
+        makeMetric({
+          id: "m1",
+          key: "body_weight",
+          value: 76,
+          recordedAt: "2026-08-17T09:00:00.000Z",
+          areaId: HEALTH_ID,
+        }),
+        makeMetric({
+          id: "m2",
+          key: "body_weight",
+          value: 74.5,
+          recordedAt: "2026-08-19T09:00:00.000Z",
+          areaId: HEALTH_ID,
+        }),
+      ]),
+      deleteMetricHandler((id) => deleted.push(id)),
+    );
+
+    renderArea();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Undo the last body weight reading/ }),
+    );
+
+    // The headline, not the whole series.
+    await waitFor(() => expect(deleted).toEqual(["m2"]));
   });
 
   it("reports an area id that matches nothing", async () => {

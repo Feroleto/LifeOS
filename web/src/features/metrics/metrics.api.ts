@@ -1,6 +1,7 @@
 import { http } from "@/api/http";
 import { fetchAllPages } from "@/api/paged";
 import type { Paginated } from "@/api/paged";
+import type { CreateMetricBody } from "./metric.schemas";
 import type { Metric } from "./metric.types";
 
 export type MetricQuery = {
@@ -34,4 +35,16 @@ export function listMetrics(
  */
 export function listAllMetrics(query: MetricQuery): Promise<Metric[]> {
   return fetchAllPages((page, limit) => listMetrics(query, page, limit));
+}
+
+export function createMetric(body: CreateMetricBody): Promise<Metric> {
+  return http.post<Metric>("/metrics", body);
+}
+
+/**
+ * Metrics are append-only: there is no PATCH, so correcting a reading means
+ * deleting it and recording another.
+ */
+export function deleteMetric(id: string): Promise<void> {
+  return http.delete(`/metrics/${id}`);
 }

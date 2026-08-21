@@ -14,9 +14,11 @@ and section 17 lists architectural rules the schema is meant to obey.
 Current state: backend V1 with the whole Core exposed over HTTP — `users`, `areas`,
 `goals`, `habits`, `events`, `metrics` and `notes`, plus `/timeline` — and a web V1 in
 `web/` with screens for `areas`, `goals` and `habits`, plus a dashboard. `events`,
-`metrics` and `notes` have no screen of their own yet, so a metric can only be recorded
-through the API. Habits are fully managed from the web app — created, edited, completed,
-paused and archived — except for `DELETE /habits/:id`, which no screen calls.
+`metrics` and `notes` have no screen of their own yet; metrics are nonetheless read and
+written from the **area page**, which is the only place the client touches them, while
+`notes` and `/timeline` have no consumer at all. Habits are fully managed from the web app
+— created, edited, completed, paused and archived — except for `DELETE /habits/:id`, which
+no screen calls.
 
 `events` and `metrics` are **append-only**: the schema gives them a `createdAt` but no
 `updatedAt`, so their services and controllers deliberately expose no `update`/`PATCH`.
@@ -174,7 +176,11 @@ instants while the grid is calendar days, and no zone offset is wider than a day
 `toDayKey` is the client half of `habit-streak.ts`, and both exist because a completion
 logged at 22:00 in São Paulo is already tomorrow in UTC. The same reasoning runs the other
 way when writing: `dayKeyToInstant` picks **midday in the user's zone**, so backdating from
-a laptop in another zone still lands on the square that was clicked.
+a laptop in another zone still lands on the square that was clicked. Neither is
+habit-specific — both live in `web/src/lib/date.ts` next to `todayInputValue`, and every
+`Timestamptz` a user enters through an `<input type="date">` takes `dayKeyToInstant`.
+`dateInputToIso` anchors at *browser* midnight instead and is for the fields whose day
+only has to survive the local round trip.
 
 A square means "completed at least once", not "fulfilled": `frequencyTarget` may ask for
 more than one a day and a weekly habit's period is not a day at all — the tile above
@@ -211,12 +217,29 @@ aggregate on that card therefore describes the window and says so: `average` is 
 the readings that were fetched, not of all history. The **latest** reading is the headline,
 since a series like body weight is a current state whose ninety-day mean means nothing.
 
+It is also the only place a measurement is **written**. `MetricFormDialog` offers the keys
+of that same swept window as chips — there being no registry to ask, the window is the
+only list of series that exists — plus a free-text key validated against the client's copy
+of `METRIC_KEY_PATTERN`, so `sleepHours` is refused before the request rather than becoming
+a second series. Picking a chip carries its unit over for the same reason. `recordedAt` is
+a `Timestamptz`, so it goes through `dayKeyToInstant` and **not** `dateInputToIso`: the day
+has to hold in the user's stored zone, which is the one every other date on these screens
+is bucketed by. The record button lives in the page header rather than above the cards,
+because the area with nothing in it is the one that needs it and there no card is drawn.
+
+Correcting a reading is **deleting it**, since `METRIC` is append-only and the API exposes
+no PATCH — the card's undo removes `latest` only, the reading it headlines and the one a
+typo lands on; a delete on every bar would turn a trend line into a hit area.
+
 `fetchAllPages` in `api/paged.ts` is the shared sweep behind both that and the habit
 tracker: page 1 reports `meta.pages`, so a single page costs one request, and a cap stops a
 wide window from becoming an unbounded run.
 
 Query keys live in `web/src/api/query-keys.ts`. Mutating an **area** invalidates goals as
-well, because goal responses embed the whole `Area` record.
+well, because goal responses embed the whole `Area` record. So does mutating a **metric**,
+and for a sharper reason: a goal carrying `metricKey` stores no progress at all — its
+`percentage` is a sum over `METRIC` rows — so a new reading moves a bar the board and the
+area page have already cached.
 
 The web gate in `.husky/pre-commit` only runs when the commit stages something under
 `web/`, so backend-only commits keep their previous cost.

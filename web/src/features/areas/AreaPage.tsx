@@ -1,12 +1,15 @@
-import { ArrowLeft } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/layout/states";
+import { Button } from "@/components/ui/button";
 import { useGoalProgress, useGoals } from "@/features/goals/goals.queries";
 import { metricGoalIds } from "@/features/goals/goal-progress";
 import { useHabitSummaries, useHabits } from "@/features/habits/habits.queries";
+import { MetricFormDialog } from "@/features/metrics/MetricFormDialog";
 import { toSeries } from "@/features/metrics/metric-series";
-import { useMetrics } from "@/features/metrics/metrics.queries";
+import { useDeleteMetric, useMetrics } from "@/features/metrics/metrics.queries";
 import { useMe } from "@/identity/user.queries";
 import { shiftDayKey, todayInputValue } from "@/lib/date";
 import { AreaGoalsCard } from "./AreaGoalsCard";
@@ -27,6 +30,10 @@ const WINDOW_LABEL = `last ${WINDOW_DAYS} days`;
 export function AreaPage() {
   const { areaId = "" } = useParams();
   const me = useMe();
+
+  // `undefined` opens the dialog on the series touched last; a key opens it on
+  // that one, which is how a card's own "+" differs from the header button.
+  const [recording, setRecording] = useState<{ seriesKey?: string } | null>(null);
 
   // From the list rather than a GET /areas/:id: the sidebar already holds it,
   // so this shares that cache entry instead of spending a request to re-fetch
@@ -50,7 +57,11 @@ export function AreaPage() {
   const summaries = useHabitSummaries(habitList.map((habit) => habit.id));
   const progress = useGoalProgress(metricGoalIds(goalList));
 
-  const series = toSeries(metrics.data ?? []);
+  const deleteMetric = useDeleteMetric();
+
+  // Memoized because the dialog takes it: recomputing it every render would
+  // hand the chip row a new array on every keystroke inside the form.
+  const series = useMemo(() => toSeries(metrics.data ?? []), [metrics.data]);
   const isPending = areas.isPending || goals.isPending || habits.isPending || metrics.isPending;
   const error = areas.error ?? goals.error ?? habits.error ?? metrics.error;
 
@@ -78,14 +89,25 @@ export function AreaPage() {
           <ArrowLeft className="size-4" /> Back to overview
         </Link>
 
-        <div className="flex flex-col gap-1">
-          <h1 className="font-heading flex items-center gap-3 text-[44px] leading-none">
-            <AreaIcon icon={area?.icon} className="size-8 text-[var(--area)]" />
-            {area?.name ?? "Area"}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {area?.description ?? "Everything you track under this part of life."}
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading flex items-center gap-3 text-[44px] leading-none">
+              <AreaIcon icon={area?.icon} className="size-8 text-[var(--area)]" />
+              {area?.name ?? "Area"}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {area?.description ?? "Everything you track under this part of life."}
+            </p>
+          </div>
+
+          {/*
+            In the header rather than above the measurement cards, because the
+            area with nothing in it is exactly the one that needs this button —
+            and there no card is drawn to hang it off.
+          */}
+          <Button onClick={() => setRecording({})}>
+            <Plus className="size-4" /> Record measurement
+          </Button>
         </div>
       </header>
 
@@ -127,6 +149,11 @@ export function AreaPage() {
                   series={entry}
                   locale={locale}
                   windowLabel={WINDOW_LABEL}
+                  onRecord={() => setRecording({ seriesKey: entry.key })}
+                  onUndoLatest={() =>
+                    deleteMetric.mutate({ id: entry.latest.id, key: entry.key })
+                  }
+                  isUndoing={deleteMetric.isPending && deleteMetric.variables?.key === entry.key}
                 />
               ))}
             </div>
@@ -142,6 +169,16 @@ export function AreaPage() {
           ) : null}
         </div>
       )}
+
+      <MetricFormDialog
+        open={recording !== null}
+        onOpenChange={(next) => setRecording(next ? (recording ?? {}) : null)}
+        areaId={areaId}
+        timeZone={timeZone}
+        today={todayInputValue(timeZone, new Date())}
+        existingSeries={series}
+        seriesKey={recording?.seriesKey}
+      />
     </section>
   );
 }

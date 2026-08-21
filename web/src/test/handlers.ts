@@ -210,3 +210,35 @@ export const metricsHandler = (metrics: Metric[]) =>
       meta: { total: data.length, page: 1, limit: 100, pages: 1 },
     });
   });
+
+/**
+ * Serves POST /metrics, echoing back the record the API would have written.
+ *
+ * The body is captured so a test can assert what the mapper sent — the instant
+ * `recordedAt` was resolved to is the whole point of the day-key conversion.
+ */
+export const createMetricHandler = (onCreate?: (body: Record<string, unknown>) => void) =>
+  msw.post("/api/metrics", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    onCreate?.(body);
+
+    return HttpResponse.json(
+      makeMetric({
+        id: `metric-${String(body["key"])}-${String(body["recordedAt"])}`,
+        key: String(body["key"]),
+        value: Number(body["value"]),
+        recordedAt: String(body["recordedAt"]),
+        unit: body["unit"] === undefined ? null : String(body["unit"]),
+        areaId: body["areaId"] === undefined ? null : String(body["areaId"]),
+      }),
+      { status: 201 },
+    );
+  });
+
+export const deleteMetricHandler = (onDelete?: (id: string) => void) =>
+  msw.delete("/api/metrics/:id", ({ params }) => {
+    onDelete?.(String(params["id"]));
+
+    return new HttpResponse(null, { status: 204 });
+  });

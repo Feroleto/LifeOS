@@ -94,3 +94,75 @@ export function shiftDayKey(dayKey: string, days: number): string {
 
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
+
+/**
+ * The calendar day an instant falls on **in the user's own time zone**, as
+ * "YYYY-MM-DD".
+ *
+ * This is the client half of what `habit-streak.ts` does on the server, and for
+ * the same reason: a completion logged at 22:00 in São Paulo is 01:00 UTC the
+ * next day, so bucketing in the browser's zone — or in UTC — would draw it on
+ * the wrong square. "en-CA" is what renders the parts in that order.
+ */
+export function toDayKey(instant: string | Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(instant));
+}
+
+/**
+ * The offset of a time zone at a given instant, in milliseconds.
+ *
+ * Formatting the instant as wall-clock parts and reading them back as if they
+ * were UTC gives the shift the zone applied — the only way to get an IANA
+ * zone's offset, since `Date` only knows UTC and the browser's own zone.
+ */
+function zoneOffsetMs(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instant);
+
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  // Midnight formats as hour 24 rather than 0 under hour12: false.
+  const hour = value("hour") % 24;
+
+  const asUtc = Date.UTC(
+    value("year"),
+    value("month") - 1,
+    value("day"),
+    hour,
+    value("minute"),
+    value("second"),
+  );
+
+  return asUtc - instant.getTime();
+}
+
+/**
+ * The instant that lands on `dayKey` when read back in `timeZone`.
+ *
+ * Midday in the user's own zone, not the browser's: the server buckets by the
+ * stored `timezone`, so recording "yesterday" from a laptop in another zone
+ * would otherwise land on the wrong day. Midday keeps the whole offset range
+ * clear of both midnights.
+ *
+ * This is what a `Timestamptz` column entered through <input type="date"> takes
+ * — a habit completion's `occurredAt`, a metric's `recordedAt`.
+ * `dateInputToIso` above anchors at *browser* midnight instead, and is for the
+ * fields whose day only has to survive the local round trip.
+ */
+export function dayKeyToInstant(dayKey: string, timeZone: string): string {
+  const noonUtc = new Date(`${dayKey}T12:00:00.000Z`);
+
+  return new Date(noonUtc.getTime() - zoneOffsetMs(noonUtc, timeZone)).toISOString();
+}

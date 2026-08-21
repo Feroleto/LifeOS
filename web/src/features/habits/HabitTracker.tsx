@@ -1,8 +1,8 @@
 import { Archive, Check, CircleCheck, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { dayKeyToInstant } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { dayKeyToInstant } from "./habit-completions";
 import type { CompletionsByDay } from "./habit-completions";
 import type { Habit } from "./habit.types";
 

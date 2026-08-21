@@ -5,7 +5,7 @@ import { ChipButton } from "@/components/chip-button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/layout/states";
 import { Button } from "@/components/ui/button";
 import { useMe } from "@/identity/user.queries";
-import { todayInputValue } from "@/lib/date";
+import { dayKeyToInstant, todayInputValue } from "@/lib/date";
 import { HabitArchive } from "./HabitArchive";
 import { HabitCalendar } from "./HabitCalendar";
 import { HabitConsistencyCard } from "./HabitConsistencyCard";
@@ -15,7 +15,6 @@ import { HabitTracker } from "./HabitTracker";
 import {
   completionWindowFrom,
   countHabitsPerDay,
-  dayKeyToInstant,
   groupCompletions,
   lastDayKeys,
   monthGrid,

@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   dateInputToIso,
   dateInputToUtcDate,
+  dayKeyToInstant,
   isoToDateInput,
+  toDayKey,
   todayInputValue,
   utcDateToDateInput,
 } from "./date";
+
+const SAO_PAULO = "America/Sao_Paulo";
 
 describe("date input round trip", () => {
   it("keeps the day the user typed, whatever the local offset is", () => {
@@ -55,5 +59,30 @@ describe("todayInputValue", () => {
 
     expect(todayInputValue("America/Sao_Paulo", evening)).toBe("2026-08-18");
     expect(todayInputValue("UTC", evening)).toBe("2026-08-19");
+  });
+});
+
+describe("toDayKey", () => {
+  it("buckets by the user's time zone, not by UTC", () => {
+    // 22:00 in São Paulo, which is already the next day in UTC.
+    const evening = "2026-08-19T01:00:00.000Z";
+
+    expect(toDayKey(evening, SAO_PAULO)).toBe("2026-08-18");
+    expect(toDayKey(evening, "UTC")).toBe("2026-08-19");
+  });
+});
+
+describe("dayKeyToInstant", () => {
+  it("lands on midday in the user's zone, so the day survives the round trip", () => {
+    const instant = dayKeyToInstant("2026-08-18", SAO_PAULO);
+
+    expect(instant).toBe("2026-08-18T15:00:00.000Z");
+    expect(toDayKey(instant, SAO_PAULO)).toBe("2026-08-18");
+  });
+
+  it("holds for a zone far enough ahead to cross the date line", () => {
+    const instant = dayKeyToInstant("2026-08-18", "Pacific/Kiritimati");
+
+    expect(toDayKey(instant, "Pacific/Kiritimati")).toBe("2026-08-18");
   });
 });
